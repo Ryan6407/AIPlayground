@@ -1,33 +1,33 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// FlattenBlock — flattens all dims except batch
+// PositionalEmbeddingBlock — learned positional embeddings (align d_model with Text Embedding)
 // ---------------------------------------------------------------------------
 
 import { memo } from "react";
 import type { Node, NodeProps } from "@xyflow/react";
 import { BaseBlock } from "./BaseBlock";
-import { CANVAS_UI_SCALE } from "@/neuralcanvas/lib/canvasConstants";
 
 interface BlockData extends Record<string, unknown> {
   params: Record<string, number | string>;
 }
 
-const s = CANVAS_UI_SCALE;
+function PositionalEmbeddingBlockComponent({ id, data, selected }: NodeProps<Node<BlockData>>) {
+  const dModel = Number(data?.params?.d_model ?? 128);
+  const maxLen = Number(data?.params?.max_len ?? 512);
 
-function FlattenBlockComponent({ id, data, selected }: NodeProps<Node<BlockData>>) {
   return (
     <BaseBlock
       id={id}
-      blockType="Flatten"
+      blockType="PositionalEmbedding"
       params={data?.params ?? {}}
       selected={!!selected}
     >
-      <p className="text-neutral-600 font-mono not-italic" style={{ fontSize: `${7 * s}px` }}>
-        [B, C, H, W] → [B, C×H×W]
+      <p className="text-[8px] text-neutral-600 font-mono">
+        d_model: {dModel} · max_len: {maxLen}
       </p>
     </BaseBlock>
   );
 }
 
-export const FlattenBlock = memo(FlattenBlockComponent);
+export const PositionalEmbeddingBlock = memo(PositionalEmbeddingBlockComponent);

@@ -29,6 +29,7 @@ import {
   type NodeTypes,
   type EdgeTypes,
   type OnConnect,
+  type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -52,10 +53,15 @@ import {
   GradientFlowProvider,
   useGradientFlow,
 } from "@/neuralcanvas/components/peep-inside/GradientFlowContext";
-import { neuralCanvasToGraphSchema } from "@/lib/levelGraphAdapter";
+import { neuralCanvasToGraphSchema, graphsMatchStructurally } from "@/lib/levelGraphAdapter";
+import type { GraphSchema } from "@/types/graph";
 import { createPlayground, updatePlayground, getPlayground } from "@/lib/supabase/playgrounds";
+import { insertChatMessage, getChatHistory } from "@/lib/supabase/userHistories";
+import { getApiBase } from "@/neuralcanvas/lib/trainingApi";
+import ReactMarkdown from "react-markdown";
 import {
   InputBlock,
+  TextInputBlock,
   OutputBlock,
   LinearBlock,
   Conv2DBlock,
@@ -67,15 +73,50 @@ import {
   DropoutBlock,
   FlattenBlock,
   EmbeddingBlock,
+  TextEmbeddingBlock,
+  PositionalEncodingBlock,
+  PositionalEmbeddingBlock,
   SoftmaxBlock,
+  AddBlock,
+  ConcatBlock,
 } from "@/neuralcanvas/components/blocks";
 
 // ---------------------------------------------------------------------------
 // Register one node type per block → specific block components
 // ---------------------------------------------------------------------------
 
+// Task label shown on canvas for challenges; scales with zoom, coverable by other nodes
+const CHALLENGE_TASK_NODE_TYPE = "challengeTask";
+
+function ChallengeTaskNode({ data }: NodeProps<{ task?: string; isPaperLevel?: boolean }>) {
+  const task = data?.task?.trim();
+  const isPaper = data?.isPaperLevel === true;
+  if (!task) return null;
+  return (
+    <div
+      className="text-white font-medium select-none max-w-[320px] leading-snug"
+      style={{
+        fontSize: 11,
+        pointerEvents: "none",
+        whiteSpace: isPaper ? "pre-line" : "normal",
+      }}
+      aria-label={isPaper ? "About this paper" : `Challenge task: ${task}`}
+    >
+      {isPaper ? (
+        <>
+          <span className="text-amber-400/90 font-semibold block mb-1">About this paper</span>
+          <span className="text-neutral-300 font-normal">{task}</span>
+        </>
+      ) : (
+        <>Task: {task}</>
+      )}
+    </div>
+  );
+}
+
 const nodeTypes: NodeTypes = {
   Input: InputBlock,
+  TextInput: TextInputBlock,
   Output: OutputBlock,
   Linear: LinearBlock,
   Conv2D: Conv2DBlock,
@@ -87,7 +128,13 @@ const nodeTypes: NodeTypes = {
   Dropout: DropoutBlock,
   Flatten: FlattenBlock,
   Embedding: EmbeddingBlock,
+  TextEmbedding: TextEmbeddingBlock,
+  PositionalEncoding: PositionalEncodingBlock,
+  PositionalEmbedding: PositionalEmbeddingBlock,
   Softmax: SoftmaxBlock,
+  Add: AddBlock,
+  Concat: ConcatBlock,
+  [CHALLENGE_TASK_NODE_TYPE]: ChallengeTaskNode,
 };
 
 const edgeTypes: EdgeTypes = {
@@ -159,11 +206,19 @@ function CanvasInner({
   initialEdges,
   playgroundId,
   playgroundName,
+  challengeSolutionGraph,
+  challengeLevelNumber,
+  onChallengeSuccess,
+  isPaperLevel,
 }: {
   initialNodes?: Node[];
   initialEdges?: Edge[];
   playgroundId?: string;
   playgroundName?: string;
+  challengeSolutionGraph?: GraphSchema | null;
+  challengeLevelNumber?: number | null;
+  onChallengeSuccess?: (levelNumber: number) => void;
+  isPaperLevel?: boolean;
 }) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes ?? INITIAL_NODES);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges ?? INITIAL_EDGES);
@@ -175,6 +230,24 @@ function CanvasInner({
   const idCounter = useRef(100);
   const reactFlowInstance = useReactFlow();
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [submitResult, setSubmitResult] = useState<"idle" | "correct" | "wrong">("idle");
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackMessages, setFeedbackMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [feedbackChatOpen, setFeedbackChatOpen] = useState(false);
+
+  // ── Load chat history from Supabase when playground loads ──
+  useEffect(() => {
+    if (!playgroundId) return;
+    let cancelled = false;
+    getChatHistory(playgroundId)
+      .then((history) => {
+        if (!cancelled) setFeedbackMessages(history);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [playgroundId]);
 
   // ── Drag-and-drop from palette ──
   const onDragOver = useCallback((e: React.DragEvent) => {
@@ -216,6 +289,38 @@ function CanvasInner({
   useEffect(() => {
     recompute(nodes, edges);
   }, [nodes, edges, recompute]);
+
+  // ── Sync edge validation with current shapes and params (fixes stale error after user adjusts in_features etc.) ──
+  useEffect(() => {
+    setEdges((currentEdges) => {
+      let changed = false;
+      const next = currentEdges.map((edge) => {
+        const sourceNode = nodes.find((n) => n.id === edge.source);
+        const targetNode = nodes.find((n) => n.id === edge.target);
+        if (!sourceNode || !targetNode) return edge;
+        const sourceShape = shapes.get(edge.source)?.outputShape ?? null;
+        const validation = validateConnection(
+          {
+            id: sourceNode.id,
+            type: sourceNode.type ?? "Input",
+            data: { params: (sourceNode.data?.params ?? {}) as Record<string, string | number> },
+          },
+          {
+            id: targetNode.id,
+            type: targetNode.type ?? "Input",
+            data: { params: (targetNode.data?.params ?? {}) as Record<string, string | number> },
+          },
+          sourceShape,
+        );
+        const newError = validation.valid ? undefined : (validation.error ?? undefined);
+        const prevError = (edge.data?.error as string) || undefined;
+        if (prevError === newError) return edge;
+        changed = true;
+        return { ...edge, data: validation.valid ? {} : { error: validation.error } };
+      });
+      return changed ? next : currentEdges;
+    });
+  }, [nodes, shapes, setEdges]);
 
   // ── Connection handler with validation ──
   const onConnect: OnConnect = useCallback(
@@ -300,7 +405,11 @@ function CanvasInner({
       } else if (playgroundName) {
         metadata = { name: playgroundName };
       }
-      const graph = neuralCanvasToGraphSchema(nodes, edges, metadata);
+      const graph = neuralCanvasToGraphSchema(
+        nodes.filter((n) => n.type !== CHALLENGE_TASK_NODE_TYPE),
+        edges,
+        metadata
+      );
       if (playgroundId) {
         const ok = await updatePlayground(
           playgroundId,
@@ -323,6 +432,82 @@ function CanvasInner({
       setSaveStatus("error");
     }
   }, [nodes, edges, playgroundId, playgroundName, router]);
+
+  // ── Submit challenge (compare current graph to solution) ──
+  const handleSubmitChallenge = useCallback(() => {
+    if (!challengeSolutionGraph) return;
+    const currentGraph = neuralCanvasToGraphSchema(
+      nodes.filter((n) => n.type !== CHALLENGE_TASK_NODE_TYPE),
+      edges,
+      { name: "", created_at: "" }
+    );
+    const match = graphsMatchStructurally(currentGraph, challengeSolutionGraph);
+    setSubmitResult(match ? "correct" : "wrong");
+    if (match && challengeLevelNumber != null && onChallengeSuccess) {
+      onChallengeSuccess(challengeLevelNumber);
+    } else if (match) {
+      setTimeout(() => setSubmitResult("idle"), 3000);
+    }
+  }, [nodes, edges, challengeSolutionGraph, challengeLevelNumber, onChallengeSuccess]);
+
+  // Reset "Not quite" when user edits the graph so they can submit again
+  useEffect(() => {
+    if (submitResult === "wrong") setSubmitResult("idle");
+  }, [nodes, edges]);
+
+  // ── Get feedback (chat) ──
+  const handleFeedbackSend = useCallback(
+    async (userMessage: string) => {
+      if (nodes.length === 0 || !userMessage.trim()) return;
+      const trimmed = userMessage.trim();
+      const newMessages: { role: "user" | "assistant"; content: string }[] = [
+        ...feedbackMessages,
+        { role: "user", content: trimmed },
+      ];
+      setFeedbackMessages(newMessages);
+      if (playgroundId) {
+        insertChatMessage(playgroundId, "user", trimmed).catch(() => {});
+      }
+      setFeedbackLoading(true);
+      try {
+        const row = playgroundId ? await getPlayground(playgroundId) : null;
+        const metadata = row
+          ? { name: row.name, created_at: (row.graph_json as { metadata?: { created_at?: string } } | undefined)?.metadata?.created_at }
+          : undefined;
+        const graph = neuralCanvasToGraphSchema(
+          nodes.filter((n) => n.type !== CHALLENGE_TASK_NODE_TYPE),
+          edges,
+          metadata
+        );
+        const base = getApiBase();
+        const res = await fetch(`${base}/api/feedback`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ graph, messages: newMessages }),
+        });
+        const data = await res.json().catch(() => ({}));
+        let assistantContent: string;
+        if (!res.ok) {
+          assistantContent = (data.detail ?? res.statusText ?? "Request failed") as string;
+        } else {
+          assistantContent = data.feedback ?? "No response.";
+        }
+        setFeedbackMessages((m) => [...m, { role: "assistant", content: assistantContent }]);
+        if (playgroundId) {
+          insertChatMessage(playgroundId, "assistant", assistantContent).catch(() => {});
+        }
+      } catch (e) {
+        const assistantContent = e instanceof Error ? e.message : "Failed to get feedback.";
+        setFeedbackMessages((m) => [...m, { role: "assistant", content: assistantContent }]);
+        if (playgroundId) {
+          insertChatMessage(playgroundId, "assistant", assistantContent).catch(() => {});
+        }
+      } finally {
+        setFeedbackLoading(false);
+      }
+    },
+    [nodes, edges, playgroundId, feedbackMessages]
+  );
 
   // ── Keyboard shortcuts ──
   useEffect(() => {
@@ -468,24 +653,45 @@ function CanvasInner({
 
       {/* ── Top-right toolbar ── */}
       <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+        {challengeSolutionGraph && (
+          <SubmitChallengeButton
+            onSubmit={handleSubmitChallenge}
+            result={submitResult}
+            disabled={nodes.filter((n) => n.type !== CHALLENGE_TASK_NODE_TYPE).length === 0}
+          />
+        )}
+        {!isPaperLevel && (
+          <FeedbackButton
+            onSend={handleFeedbackSend}
+            loading={feedbackLoading}
+            disabled={nodes.length === 0}
+            messages={feedbackMessages}
+            chatOpen={feedbackChatOpen}
+            onOpenChat={() => setFeedbackChatOpen(true)}
+            onCloseChat={() => setFeedbackChatOpen(false)}
+          />
+        )}
         <SaveButton
           onSave={handleSave}
           status={saveStatus}
           disabled={nodes.length === 0}
         />
-        <TrainingToggle
-          open={trainingPanelOpen}
-          onToggle={() => setTrainingPanelOpen((o) => !o)}
-        />
+        {challengeLevelNumber == null && (
+          <div className="relative">
+            <TrainingToggle
+              open={trainingPanelOpen}
+              onToggle={() => setTrainingPanelOpen((o) => !o)}
+            />
+            <TrainingPanel
+              open={trainingPanelOpen}
+              onClose={() => setTrainingPanelOpen(false)}
+              nodes={nodes}
+              edges={edges}
+              compact
+            />
+          </div>
+        )}
       </div>
-
-      {/* ── Training panel (slide-out) ── */}
-      <TrainingPanel
-        open={trainingPanelOpen}
-        onClose={() => setTrainingPanelOpen(false)}
-        nodes={nodes}
-        edges={edges}
-      />
 
       {/* ── Bottom bar: keyboard hints + gradient flow toggle ── */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-1.5 rounded-full bg-neural-surface/80 border border-neural-border backdrop-blur text-[10px] font-mono select-none">
@@ -508,6 +714,204 @@ function CanvasInner({
       {/* ── Peep Inside Modal ── */}
       <PeepInsideOverlay />
     </div>
+  );
+}
+
+// ── Feedback button + chat panel ──
+function FeedbackButton({
+  onSend,
+  loading,
+  disabled,
+  messages,
+  chatOpen,
+  onOpenChat,
+  onCloseChat,
+}: {
+  onSend: (text: string) => void;
+  loading: boolean;
+  disabled: boolean;
+  messages: { role: "user" | "assistant"; content: string }[];
+  chatOpen: boolean;
+  onOpenChat: () => void;
+  onCloseChat: () => void;
+}) {
+  const [input, setInput] = useState("");
+
+  const handleSubmit = useCallback(
+    (e?: React.FormEvent) => {
+      e?.preventDefault();
+      const text = input.trim();
+      if (!text || loading || disabled) return;
+      onSend(text);
+      setInput("");
+    },
+    [input, loading, disabled, onSend]
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSubmit();
+      }
+    },
+    [handleSubmit]
+  );
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={chatOpen ? onCloseChat : onOpenChat}
+        disabled={disabled}
+        className={`
+          flex items-center gap-2 px-3 py-1.5 rounded-full
+          border backdrop-blur text-[10px] font-mono font-semibold
+          transition-all duration-200 select-none
+          ${
+            disabled
+              ? "bg-neural-surface/50 border-neural-border text-neutral-600 cursor-not-allowed"
+              : chatOpen
+                ? "bg-neural-accent/20 border-neural-accent/50 text-neural-accent-light"
+                : "bg-neural-surface/80 border-neural-border text-neutral-300 hover:text-white hover:border-neutral-500"
+          }
+        `}
+        title={disabled ? "Add blocks for feedback" : "Chat about your design"}
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+        Feedback
+      </button>
+
+      {chatOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/30 backdrop-blur-[2px] z-40"
+            onClick={onCloseChat}
+            aria-hidden="true"
+          />
+          <div
+            className="fixed bottom-4 right-4 w-[360px] max-h-[480px] rounded-2xl bg-neural-surface/95 border border-neural-border/80 shadow-2xl backdrop-blur-xl z-50 flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-neural-border/60 shrink-0">
+              <span className="text-sm font-semibold text-white font-mono">Design feedback</span>
+              <button
+                onClick={onCloseChat}
+                className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neural-border/50 transition-colors"
+                aria-label="Close"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+              {messages.map((msg, i) =>
+                msg.role === "user" ? (
+                  <div key={i} className="flex justify-end">
+                    <div className="max-w-[85%] px-3 py-2 rounded-2xl rounded-br-md bg-neural-accent/20 border border-neural-accent/30 text-xs text-neutral-200">
+                      {msg.content}
+                    </div>
+                  </div>
+                ) : (
+                  <div key={i} className="flex justify-start">
+                    <div className="max-w-[85%] px-3 py-2.5 rounded-2xl rounded-bl-md bg-neural-bg/80 border border-neural-border/50 text-xs text-neutral-300 leading-relaxed [&_p]:mb-2 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:space-y-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:space-y-1 [&_strong]:font-semibold [&_strong]:text-neutral-200 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:bg-white/10 [&_code]:text-[11px]">
+                      <ReactMarkdown
+                        components={{
+                          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                          ul: ({ children }) => <ul className="list-disc pl-4 space-y-1 my-2">{children}</ul>,
+                          ol: ({ children }) => <ol className="list-decimal pl-4 space-y-1 my-2">{children}</ol>,
+                          li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+                          strong: ({ children }) => <strong className="font-semibold text-neutral-200">{children}</strong>,
+                          code: ({ children }) => <code className="px-1 py-0.5 rounded bg-white/10 text-[11px] font-mono">{children}</code>,
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                )
+              )}
+              {loading && (
+                <div className="flex justify-start">
+                  <div className="max-w-[85%] px-3 py-2 rounded-2xl rounded-bl-md bg-neural-border/30 text-xs text-neutral-400 flex items-center gap-2">
+                    <span className="animate-pulse">Thinking...</span>
+                  </div>
+                </div>
+              )}
+            </div>
+            <form onSubmit={handleSubmit} className="p-3 border-t border-neural-border/60 shrink-0">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask about your design..."
+                rows={1}
+                disabled={loading || disabled}
+                className="w-full px-3 py-2 rounded-xl bg-neural-bg border border-neural-border text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-neural-accent resize-none disabled:opacity-50"
+              />
+              <p className="mt-1 text-[10px] text-neutral-500 font-mono">Press Enter to send</p>
+            </form>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+// ── Submit challenge button (compare to solution) ──
+function SubmitChallengeButton({
+  onSubmit,
+  result,
+  disabled,
+}: {
+  onSubmit: () => void;
+  result: "idle" | "correct" | "wrong";
+  disabled: boolean;
+}) {
+  const label =
+    result === "correct"
+      ? "Correct!"
+      : result === "wrong"
+        ? "Not quite"
+        : "Submit";
+  return (
+    <button
+      type="button"
+      onClick={onSubmit}
+      disabled={disabled}
+      className={`
+        flex items-center gap-2 px-3 py-1.5 rounded-full
+        border backdrop-blur text-[10px] font-mono font-semibold
+        transition-all duration-200 select-none
+        ${
+          result === "correct"
+            ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400"
+            : result === "wrong"
+              ? "bg-amber-500/20 border-amber-500/50 text-amber-400"
+              : disabled
+                ? "bg-neural-surface/50 border-neural-border text-neutral-600 cursor-not-allowed"
+                : "bg-amber-500/15 border-amber-500/40 text-amber-400 hover:bg-amber-500/25 hover:border-amber-500/50"
+        }
+      `}
+      title={disabled ? "Add blocks to submit" : "Check if your graph matches the solution"}
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+      {label}
+    </button>
   );
 }
 
@@ -676,6 +1080,8 @@ function PeepInsideOverlay() {
 // Exported wrapper (provides ShapeContext)
 // ---------------------------------------------------------------------------
 
+const CHALLENGE_TASK_NODE_ID = "challenge-task";
+
 export interface NeuralCanvasProps {
   /** When provided (e.g. from a challenge level), the canvas starts with this graph instead of the default demo. */
   initialNodes?: Node[];
@@ -684,6 +1090,16 @@ export interface NeuralCanvasProps {
   playgroundId?: string;
   /** Display name for the playground (used when saving). */
   playgroundName?: string;
+  /** When provided (e.g. challenge level), a task label is shown on the canvas (scales with zoom, coverable). */
+  challengeTask?: string | null;
+  /** When true, the task content is shown as "About this paper" with multi-line paper insights instead of "Task:". */
+  isPaperLevel?: boolean;
+  /** When provided with a challenge, Submit checks current graph against this solution. */
+  challengeSolutionGraph?: GraphSchema | null;
+  /** Level number for the current challenge; when submit is correct, passed to onChallengeSuccess. */
+  challengeLevelNumber?: number | null;
+  /** Called when the user submits and the graph matches the solution; use to save completion, show confetti, redirect. */
+  onChallengeSuccess?: (levelNumber: number) => void;
 }
 
 export default function NeuralCanvas({
@@ -691,7 +1107,28 @@ export default function NeuralCanvas({
   initialEdges,
   playgroundId,
   playgroundName,
+  challengeTask,
+  isPaperLevel = false,
+  challengeSolutionGraph,
+  challengeLevelNumber,
+  onChallengeSuccess,
 }: NeuralCanvasProps = {}) {
+  const effectiveInitialNodes = useMemo(() => {
+    const base = initialNodes ?? INITIAL_NODES;
+    // For paper levels, paper info is shown in a separate panel (no overlay on canvas)
+    if (isPaperLevel || !challengeTask?.trim()) return base;
+    const taskNode: Node = {
+      id: CHALLENGE_TASK_NODE_ID,
+      type: CHALLENGE_TASK_NODE_TYPE,
+      position: { x: 24, y: 24 },
+      data: { task: challengeTask.trim(), isPaperLevel: false },
+      draggable: false,
+      selectable: false,
+      connectable: false,
+    };
+    return [taskNode, ...base];
+  }, [initialNodes, challengeTask, isPaperLevel]);
+
   return (
     <ReactFlowProvider>
       <ShapeProvider>
@@ -699,10 +1136,14 @@ export default function NeuralCanvas({
           <GradientFlowProvider>
             <div className="w-full h-full min-h-0 bg-neural-bg">
               <CanvasInner
-                initialNodes={initialNodes}
+                initialNodes={effectiveInitialNodes}
                 initialEdges={initialEdges}
                 playgroundId={playgroundId}
                 playgroundName={playgroundName}
+                challengeSolutionGraph={challengeSolutionGraph}
+                challengeLevelNumber={challengeLevelNumber}
+                onChallengeSuccess={onChallengeSuccess}
+                isPaperLevel={isPaperLevel}
               />
             </div>
           </GradientFlowProvider>

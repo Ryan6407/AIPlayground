@@ -1,7 +1,7 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// InputBlock — model input (output shape from graph; dataset chosen in Training panel)
+// TextInputBlock — token IDs input for text/sequence models [B, seq_len]
 // ---------------------------------------------------------------------------
 
 import { memo } from "react";
@@ -17,15 +17,17 @@ interface BlockData extends Record<string, unknown> {
 
 const s = CANVAS_UI_SCALE;
 
-function InputBlockComponent({ id, data, selected }: NodeProps<Node<BlockData>>) {
+function TextInputBlockComponent({ id, data, selected }: NodeProps<Node<BlockData>>) {
   const { shapes } = useShapes();
   const result = shapes.get(id);
   const outLabel = getShapeLabel(result?.outputShape ?? null);
+  const batch = Number(data?.params?.batch_size ?? 1);
+  const seqLen = Number(data?.params?.seq_len ?? 128);
 
   return (
     <BaseBlock
       id={id}
-      blockType="Input"
+      blockType="TextInput"
       params={data?.params ?? {}}
       selected={!!selected}
     >
@@ -34,12 +36,12 @@ function InputBlockComponent({ id, data, selected }: NodeProps<Node<BlockData>>)
           <span className="text-neutral-600 font-mono shrink-0" style={{ fontSize: `${7 * s}px` }}>out</span>
           <span className="font-mono text-amber-400/80 truncate min-w-0" style={{ fontSize: `${7 * s}px` }}>{outLabel}</span>
         </div>
-        <p className="text-neutral-500 truncate" style={{ fontSize: `${6 * s}px` }} title="Dataset set in Training panel">
-          Training panel
+        <p className="text-neutral-500 truncate" style={{ fontSize: `${6 * s}px` }}>
+          [B, seq] → {batch}×{seqLen}
         </p>
       </div>
     </BaseBlock>
   );
 }
 
-export const InputBlock = memo(InputBlockComponent);
+export const TextInputBlock = memo(TextInputBlockComponent);

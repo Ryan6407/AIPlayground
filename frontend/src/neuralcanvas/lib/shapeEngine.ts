@@ -152,11 +152,13 @@ function topologicalSort(
 /**
  * Given a block type, its params, and the resolved input shape (may be null
  * for source nodes like Input), compute the output shape **or** an error.
+ * For Add/Concat, pass all input shapes in inputShapes (length >= 2).
  */
 function computeBlockShape(
   blockType: BlockType,
   params: Record<string, number | string>,
   inputShape: Shape | null,
+  inputShapes?: Shape[] | null,
 ): { outputShape: Shape | null; error?: string } {
   switch (blockType) {
     // ----- Input -----
@@ -165,13 +167,21 @@ function computeBlockShape(
       return { outputShape: ["B", 1, 28, 28] };
     }
 
+    // ----- TextInput -----
+    case "TextInput": {
+      const batch = intParam(params, "batch_size", 1);
+      const seqLen = intParam(params, "seq_len", 128);
+      return { outputShape: [batch, seqLen] };
+    }
+
     // ----- Linear -----
     case "Linear": {
       if (!inputShape) return { outputShape: null, error: "No input connected." };
       const inF = intParam(params, "in_features", 784);
       const outF = intParam(params, "out_features", 128);
       const lastDim = inputShape[inputShape.length - 1];
-      if (typeof lastDim === "number" && lastDim !== inF) {
+      const lastDimNum = typeof lastDim === "number" ? lastDim : Number(lastDim);
+      if (Number.isFinite(lastDimNum) && Number(inF) !== lastDimNum) {
         return {
           outputShape: null,
           error: `Linear expects last dim = ${inF} but got ${lastDim}. Change in_features to ${lastDim} or check the upstream block.`,
@@ -339,6 +349,97 @@ function computeBlockShape(
       return { outputShape: [inputShape[0], inputShape[1], embedDim] };
     }
 
+    // ----- TextEmbedding (same as Embedding; embedding_dim aligns with d_model downstream) -----
+    case "TextEmbedding": {
+      if (!inputShape) return { outputShape: null, error: "No input connected." };
+      if (inputShape.length !== 2) {
+        return {
+          outputShape: null,
+          error: `Text Embedding expects 2D input [batch, seq_len] but got ${inputShape.length}D ${getShapeLabel(inputShape)}. Connect Text Input.`,
+        };
+      }
+      const embedDim = intParam(params, "embedding_dim", 128);
+      return { outputShape: [inputShape[0], inputShape[1], embedDim] };
+    }
+
+    // ----- PositionalEncoding (passthrough shape; adds sinusoidal encoding) -----
+    case "PositionalEncoding": {
+      if (!inputShape) return { outputShape: null, error: "No input connected." };
+      if (inputShape.length !== 3) {
+        return {
+          outputShape: null,
+          error: `PositionalEncoding expects 3D input [batch, seq, d_model] but got ${inputShape.length}D ${getShapeLabel(inputShape)}.`,
+        };
+      }
+      return { outputShape: [...inputShape] };
+    }
+
+    // ----- PositionalEmbedding (passthrough shape; add learned positions; d_model must match upstream) -----
+    case "PositionalEmbedding": {
+      if (!inputShape) return { outputShape: null, error: "No input connected." };
+      if (inputShape.length !== 3) {
+        return {
+          outputShape: null,
+          error: `Positional Embedding expects 3D input [batch, seq, d_model] but got ${inputShape.length}D ${getShapeLabel(inputShape)}. Use after Text Embedding.`,
+        };
+      }
+      const dModel = intParam(params, "d_model", 128);
+      const lastDim = inputShape[2];
+      if (typeof lastDim === "number" && lastDim !== dModel) {
+        return {
+          outputShape: null,
+          error: `Positional Embedding d_model is ${dModel} but input last dim is ${lastDim}. Set d_model to ${lastDim} to match Text Embedding.`,
+        };
+      }
+      return { outputShape: [...inputShape] };
+    }
+
+    // ----- Add (element-wise sum; both inputs must have same shape) -----
+    case "Add": {
+      const shapes = inputShapes ?? (inputShape ? [inputShape] : []);
+      if (shapes.length < 2) {
+        return { outputShape: null, error: "Add block needs two inputs. Connect both ports." };
+      }
+      const [a, b] = shapes;
+      const aStr = getShapeLabel(a);
+      const bStr = getShapeLabel(b);
+      if (a.length !== b.length) {
+        return { outputShape: null, error: `Add shape mismatch: ${aStr} vs ${bStr}. Both inputs must have the same shape.` };
+      }
+      for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) {
+          return { outputShape: null, error: `Add shape mismatch: ${aStr} vs ${bStr}. Both inputs must have the same shape.` };
+        }
+      }
+      return { outputShape: [...a] };
+    }
+
+    // ----- Concat (concatenate along dim) -----
+    case "Concat": {
+      const shapes = inputShapes ?? (inputShape ? [inputShape] : []);
+      if (shapes.length < 2) {
+        return { outputShape: null, error: "Concat block needs at least two inputs. Connect both ports." };
+      }
+      const dim = intParam(params, "dim", 1);
+      const ref = shapes[0];
+      for (let i = 1; i < shapes.length; i++) {
+        if (shapes[i].length !== ref.length) {
+          return { outputShape: null, error: `Concat: all inputs must have same rank. Got ${getShapeLabel(ref)} vs ${getShapeLabel(shapes[i])}.` };
+        }
+      }
+      const out = [...ref];
+      if (dim >= 0 && dim < ref.length && typeof ref[dim] === "number") {
+        let sum = ref[dim] as number;
+        for (let i = 1; i < shapes.length; i++) {
+          const d = shapes[i][dim];
+          if (typeof d === "number") sum += d;
+          else { sum = NaN; break; }
+        }
+        if (Number.isFinite(sum)) out[dim] = sum;
+      }
+      return { outputShape: out };
+    }
+
     default: {
       return { outputShape: null, error: `Unknown block type "${blockType}".` };
     }
@@ -396,13 +497,17 @@ export function propagateShapes(
     const blockType = node.type as BlockType;
     const params = node.data?.params ?? {};
 
-    // Resolve input shape: take the first connected predecessor's output shape.
-    // (For blocks with multiple inputs in the future, this can be extended.)
     const predecessors = incomingMap.get(nodeId) ?? [];
     let inputShape: Shape | null = null;
+    let inputShapes: Shape[] | null = null;
 
-    if (predecessors.length > 0) {
-      // Use the first predecessor that has a resolved output shape.
+    if (blockType === "Add" || blockType === "Concat") {
+      // Multi-input: collect all predecessors' output shapes.
+      inputShapes = predecessors
+        .map((predId) => results.get(predId)?.outputShape)
+        .filter((s): s is Shape => s != null && s.length > 0);
+      if (inputShapes.length > 0) inputShape = inputShapes[0];
+    } else if (predecessors.length > 0) {
       for (const predId of predecessors) {
         const predResult = results.get(predId);
         if (predResult?.outputShape) {
@@ -412,7 +517,7 @@ export function propagateShapes(
       }
     }
 
-    const { outputShape, error } = computeBlockShape(blockType, params, inputShape);
+    const { outputShape, error } = computeBlockShape(blockType, params, inputShape, inputShapes);
 
     results.set(nodeId, {
       inputShape,
@@ -461,10 +566,11 @@ export function validateConnection(
 
   switch (targetType) {
     case "Linear": {
-      // Linear works on any rank ≥ 1 (applies to last dim).
+      // Linear works on any rank ≥ 1 (applies to last dim). Compare numerically so 784 and "784" match.
       const inF = intParam(params, "in_features", 784);
       const lastDim = sourceShape[dims - 1];
-      if (typeof lastDim === "number" && lastDim !== inF) {
+      const lastDimNum = typeof lastDim === "number" ? lastDim : Number(lastDim);
+      if (Number.isFinite(lastDimNum) && Number(inF) !== lastDimNum) {
         return {
           valid: false,
           error: `Linear expects last dim = ${inF} but source outputs ${getShapeLabel(sourceShape)}. Change in_features to ${lastDim}.`,
@@ -544,6 +650,36 @@ export function validateConnection(
       return { valid: true };
     }
 
+    case "TextEmbedding": {
+      if (dims !== 2) {
+        return {
+          valid: false,
+          error: `Text Embedding expects 2D input [batch, seq_len] but got ${dims}D ${getShapeLabel(sourceShape)}. Connect from Text Input.`,
+        };
+      }
+      return { valid: true };
+    }
+
+    case "PositionalEncoding": {
+      if (dims !== 3) {
+        return {
+          valid: false,
+          error: `PositionalEncoding expects 3D input [batch, seq, d_model] but got ${dims}D ${getShapeLabel(sourceShape)}.`,
+        };
+      }
+      return { valid: true };
+    }
+
+    case "PositionalEmbedding": {
+      if (dims !== 3) {
+        return {
+          valid: false,
+          error: `Positional Embedding expects 3D input [batch, seq, d_model] but got ${dims}D ${getShapeLabel(sourceShape)}. Connect from Text Embedding.`,
+        };
+      }
+      return { valid: true };
+    }
+
     case "Flatten": {
       if (dims < 2) {
         return {
@@ -589,10 +725,16 @@ export function validateConnection(
     case "Dropout":
     case "Softmax":
     case "Input":
+    case "TextInput":
       return { valid: true };
 
     // Output accepts any shape.
     case "Output":
+      return { valid: true };
+
+    // Add: two inputs (same shape enforced at runtime). Concat: two+ inputs.
+    case "Add":
+    case "Concat":
       return { valid: true };
 
     default:

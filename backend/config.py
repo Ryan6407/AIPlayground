@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     runpod_enabled: bool = False
     backend_url: str = "http://localhost:8000"
     runpod_callback_enabled: bool = True
+    openai_api_key: str = ""
 
     class Config:
         env_file = ".env"

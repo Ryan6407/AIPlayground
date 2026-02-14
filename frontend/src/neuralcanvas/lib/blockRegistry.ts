@@ -37,6 +37,7 @@ export interface BlockPort {
 /** All neural-network block types NeuralCanvas supports. */
 export type BlockType =
   | "Input"
+  | "TextInput"
   | "Output"
   | "Linear"
   | "Conv2D"
@@ -48,7 +49,12 @@ export type BlockType =
   | "Dropout"
   | "Flatten"
   | "Embedding"
-  | "Softmax";
+  | "TextEmbedding"
+  | "PositionalEncoding"
+  | "PositionalEmbedding"
+  | "Softmax"
+  | "Add"
+  | "Concat";
 
 /** Full definition for a single block type. */
 export interface BlockDefinition {
@@ -96,7 +102,7 @@ const INPUT_BLOCK: BlockDefinition = {
   id: "Input",
   type: "Input",
   label: "Input",
-  icon: "database",
+  icon: "inbox",
   category: "input",
   defaultParams: {},
   paramSchema: [],
@@ -106,11 +112,28 @@ const INPUT_BLOCK: BlockDefinition = {
   description: "Model input. Choose dataset in the Training panel.",
 };
 
+const TEXT_INPUT_BLOCK: BlockDefinition = {
+  id: "TextInput",
+  type: "TextInput",
+  label: "Text Input",
+  icon: "type",
+  category: "input",
+  defaultParams: { batch_size: 1, seq_len: 128 },
+  paramSchema: [
+    { name: "batch_size", type: "int", min: 1, max: 65536 },
+    { name: "seq_len", type: "int", min: 1, max: 65536 },
+  ],
+  inputPorts: [],
+  outputPorts: [{ id: "out", label: "Output", expectedDims: 2 }],
+  color: CATEGORY_COLORS.input,
+  description: "Token IDs input for text/sequence models. Output shape [batch, seq_len]. Use with Text Embedding.",
+};
+
 const OUTPUT_BLOCK: BlockDefinition = {
   id: "Output",
   type: "Output",
   label: "Output",
-  icon: "circle-dot",
+  icon: "target",
   category: "output",
   defaultParams: {},
   paramSchema: [],
@@ -124,7 +147,7 @@ const LINEAR_BLOCK: BlockDefinition = {
   id: "Linear",
   type: "Linear",
   label: "Linear",
-  icon: "arrow-right-left",
+  icon: "rows-3",
   category: "layer",
   defaultParams: { in_features: 784, out_features: 128 },
   paramSchema: [
@@ -167,7 +190,7 @@ const LSTM_BLOCK: BlockDefinition = {
   id: "LSTM",
   type: "LSTM",
   label: "LSTM",
-  icon: "repeat",
+  icon: "refresh-cw",
   category: "layer",
   defaultParams: { input_size: 128, hidden_size: 256, num_layers: 1 },
   paramSchema: [
@@ -188,7 +211,7 @@ const ATTENTION_BLOCK: BlockDefinition = {
   id: "Attention",
   type: "Attention",
   label: "Attention",
-  icon: "scan-eye",
+  icon: "focus",
   category: "layer",
   defaultParams: { embed_dim: 512, num_heads: 8 },
   paramSchema: [
@@ -205,7 +228,7 @@ const LAYERNORM_BLOCK: BlockDefinition = {
   id: "LayerNorm",
   type: "LayerNorm",
   label: "LayerNorm",
-  icon: "align-center-horizontal",
+  icon: "sliders-horizontal",
   category: "normalization",
   defaultParams: { normalized_shape: 512 },
   paramSchema: [
@@ -221,7 +244,7 @@ const BATCHNORM_BLOCK: BlockDefinition = {
   id: "BatchNorm",
   type: "BatchNorm",
   label: "BatchNorm",
-  icon: "bar-chart-horizontal",
+  icon: "bar-chart-3",
   category: "normalization",
   defaultParams: { num_features: 32 },
   paramSchema: [
@@ -257,7 +280,7 @@ const DROPOUT_BLOCK: BlockDefinition = {
   id: "Dropout",
   type: "Dropout",
   label: "Dropout",
-  icon: "dice-3",
+  icon: "shuffle",
   category: "utility",
   defaultParams: { p: 0.5 },
   paramSchema: [
@@ -273,7 +296,7 @@ const FLATTEN_BLOCK: BlockDefinition = {
   id: "Flatten",
   type: "Flatten",
   label: "Flatten",
-  icon: "move-horizontal",
+  icon: "fold-horizontal",
   category: "utility",
   defaultParams: {},
   paramSchema: [],
@@ -287,7 +310,7 @@ const EMBEDDING_BLOCK: BlockDefinition = {
   id: "Embedding",
   type: "Embedding",
   label: "Embedding",
-  icon: "text-cursor-input",
+  icon: "hash",
   category: "layer",
   defaultParams: { num_embeddings: 10000, embedding_dim: 128 },
   paramSchema: [
@@ -298,6 +321,57 @@ const EMBEDDING_BLOCK: BlockDefinition = {
   outputPorts: [{ id: "out", label: "Output" }],
   color: CATEGORY_COLORS.layer,
   description: "Maps integer token IDs to dense embedding vectors.",
+};
+
+const TEXT_EMBEDDING_BLOCK: BlockDefinition = {
+  id: "TextEmbedding",
+  type: "TextEmbedding",
+  label: "Text Embedding",
+  icon: "type",
+  category: "layer",
+  defaultParams: { vocab_size: 10000, embedding_dim: 128 },
+  paramSchema: [
+    { name: "vocab_size", type: "int", min: 1, max: 1000000 },
+    { name: "embedding_dim", type: "int", min: 1, max: 8192 },
+  ],
+  inputPorts: [{ id: "in", label: "Input", expectedDims: 2 }],
+  outputPorts: [{ id: "out", label: "Output" }],
+  color: CATEGORY_COLORS.layer,
+  description: "Token embeddings for text. Input [B, seq_len] → Output [B, seq_len, embedding_dim]. Pair with Text Input and Positional Embedding (d_model = embedding_dim).",
+};
+
+const POSITIONAL_ENCODING_BLOCK: BlockDefinition = {
+  id: "PositionalEncoding",
+  type: "PositionalEncoding",
+  label: "Positional Encoding",
+  icon: "map-pin",
+  category: "layer",
+  defaultParams: { d_model: 128, max_len: 512 },
+  paramSchema: [
+    { name: "d_model", type: "int", min: 1, max: 8192 },
+    { name: "max_len", type: "int", min: 1, max: 65536 },
+  ],
+  inputPorts: [{ id: "in", label: "Input", expectedDims: 3 }],
+  outputPorts: [{ id: "out", label: "Output" }],
+  color: CATEGORY_COLORS.layer,
+  description: "Adds sinusoidal positional encodings to sequences (Transformer-style). Input [B, seq, d_model].",
+};
+
+const POSITIONAL_EMBEDDING_BLOCK: BlockDefinition = {
+  id: "PositionalEmbedding",
+  type: "PositionalEmbedding",
+  label: "Positional Embedding",
+  icon: "map-pin",
+  category: "layer",
+  defaultParams: { d_model: 128, max_len: 512 },
+  paramSchema: [
+    { name: "d_model", type: "int", min: 1, max: 8192 },
+    { name: "max_len", type: "int", min: 1, max: 65536 },
+  ],
+  inputPorts: [{ id: "in", label: "Input", expectedDims: 3 }],
+  outputPorts: [{ id: "out", label: "Output" }],
+  color: CATEGORY_COLORS.layer,
+  description: "Adds learned positional embeddings to sequences. Input [B, seq, d_model]. Set d_model to match Text Embedding embedding_dim.",
 };
 
 const SOFTMAX_BLOCK: BlockDefinition = {
@@ -316,6 +390,42 @@ const SOFTMAX_BLOCK: BlockDefinition = {
   description: "Normalises logits into a probability distribution along a dimension.",
 };
 
+const ADD_BLOCK: BlockDefinition = {
+  id: "Add",
+  type: "Add",
+  label: "Add",
+  icon: "plus",
+  category: "utility",
+  defaultParams: {},
+  paramSchema: [],
+  inputPorts: [
+    { id: "in_a", label: "A" },
+    { id: "in_b", label: "B" },
+  ],
+  outputPorts: [{ id: "out", label: "Output" }],
+  color: CATEGORY_COLORS.utility,
+  description: "Element-wise sum of two tensors (e.g. residual connection). Both inputs must have the same shape.",
+};
+
+const CONCAT_BLOCK: BlockDefinition = {
+  id: "Concat",
+  type: "Concat",
+  label: "Concat",
+  icon: "merge",
+  category: "utility",
+  defaultParams: { dim: 1 },
+  paramSchema: [
+    { name: "dim", type: "int", min: 0, max: 4 },
+  ],
+  inputPorts: [
+    { id: "in_a", label: "A" },
+    { id: "in_b", label: "B" },
+  ],
+  outputPorts: [{ id: "out", label: "Output" }],
+  color: CATEGORY_COLORS.utility,
+  description: "Concatenates two or more tensors along the given dimension.",
+};
+
 // ---------------------------------------------------------------------------
 // Registry map
 // ---------------------------------------------------------------------------
@@ -326,6 +436,7 @@ const SOFTMAX_BLOCK: BlockDefinition = {
  */
 export const BLOCK_REGISTRY: Record<BlockType, BlockDefinition> = {
   Input: INPUT_BLOCK,
+  TextInput: TEXT_INPUT_BLOCK,
   Output: OUTPUT_BLOCK,
   Linear: LINEAR_BLOCK,
   Conv2D: CONV2D_BLOCK,
@@ -337,7 +448,12 @@ export const BLOCK_REGISTRY: Record<BlockType, BlockDefinition> = {
   Dropout: DROPOUT_BLOCK,
   Flatten: FLATTEN_BLOCK,
   Embedding: EMBEDDING_BLOCK,
+  TextEmbedding: TEXT_EMBEDDING_BLOCK,
+  PositionalEncoding: POSITIONAL_ENCODING_BLOCK,
+  PositionalEmbedding: POSITIONAL_EMBEDDING_BLOCK,
   Softmax: SOFTMAX_BLOCK,
+  Add: ADD_BLOCK,
+  Concat: CONCAT_BLOCK,
 };
 
 // ---------------------------------------------------------------------------
