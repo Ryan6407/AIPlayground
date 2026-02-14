@@ -9,6 +9,11 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from models.schemas import TrainingRequest, GraphSchema, TrainingConfig
 from compiler.validator import validate_graph, ValidationError
 from training.trainer import train_model
+from config import settings
+
+# Import RunPod Flash trainer only if enabled
+if settings.runpod_enabled:
+    from training.runpod_flash_trainer import train_model_flash
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["training"])
@@ -100,14 +105,19 @@ async def training_websocket(websocket: WebSocket, job_id: str):
     listener_task = asyncio.create_task(listen_for_commands())
 
     try:
-        logger.info("Training starting job_id=%s dataset_id=%s epochs=%s", job_id, request.dataset_id, request.training_config.epochs)
-        await train_model(
-            graph=request.graph,
-            dataset_id=request.dataset_id,
-            config=request.training_config,
-            ws_callback=ws_callback,
-            stop_event=stop_event,
-        )
+        # Route to RunPod Flash or local training
+        if settings.runpod_enabled:
+            logger.info("Starting RunPod Flash training job_id=%s dataset_id=%s epochs=%s", job_id, request.dataset_id, request.training_config.epochs)
+            await train_with_runpod_flash(request, ws_callback, stop_event)
+        else:
+            logger.info("Starting local training job_id=%s dataset_id=%s epochs=%s", job_id, request.dataset_id, request.training_config.epochs)
+            await train_model(
+                graph=request.graph,
+                dataset_id=request.dataset_id,
+                config=request.training_config,
+                ws_callback=ws_callback,
+                stop_event=stop_event,
+            )
         logger.info("Training finished job_id=%s", job_id)
     except Exception as e:
         logger.exception("Training failed job_id=%s: %s", job_id, e)
@@ -119,3 +129,34 @@ async def training_websocket(websocket: WebSocket, job_id: str):
             await websocket.close()
         except Exception:
             pass
+
+
+async def train_with_runpod_flash(request, ws_callback, stop_event):
+    """Execute training on RunPod Flash and stream results."""
+    try:
+        # Call the @remote decorated function
+        # First await the call to get the remote job/generator
+        remote_job = await train_model_flash(
+            graph_dict=request.graph.dict(),
+            dataset_id=request.dataset_id,
+            config_dict=request.training_config.dict()
+        )
+
+        logger.info(f"RunPod Flash job created: {type(remote_job)}")
+
+        # Now iterate over the results
+        async for message in remote_job:
+            if stop_event.is_set():
+                # Note: RunPod Flash doesn't support cancellation mid-execution
+                # The job will complete, but we stop sending updates
+                await ws_callback({"type": "stopped"})
+                break
+
+            await ws_callback(message)
+
+            if message.get("type") in ("completed", "error"):
+                break
+
+    except Exception as e:
+        logger.exception(f"RunPod Flash training failed: {e}")
+        await ws_callback({"type": "error", "message": str(e)})
