@@ -30,7 +30,6 @@ export default function Toolbar() {
       const result = await res.json();
       setValidationResult(result);
 
-      // Update shapes on nodes
       if (result.valid && result.shapes) {
         const { updateNodeShape } = useGraphStore.getState();
         for (const [nodeId, shape] of Object.entries(result.shapes)) {
@@ -61,58 +60,71 @@ export default function Toolbar() {
   };
 
   return (
-    <div className="h-12 bg-white border-b border-gray-200 flex items-center px-4 gap-3 flex-shrink-0">
-      <h1 className="font-bold text-gray-800 mr-4">AIPlayground</h1>
+    <header className="h-14 flex-shrink-0 flex items-center px-5 border-b border-[var(--border-muted)] bg-[var(--surface)]/80 backdrop-blur-xl">
+      <div className="flex items-center gap-1.5">
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--accent)] to-cyan-700 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-cyan-500/20">
+          AI
+        </div>
+        <h1 className="font-semibold text-[var(--foreground)] tracking-tight ml-1">
+          AIPlayground
+        </h1>
+      </div>
 
-      <button
-        onClick={handleValidate}
-        disabled={validating || nodes.length === 0}
-        className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-      >
-        {validating ? "Validating..." : "Validate"}
-      </button>
-
-      <button
-        onClick={handleExportJSON}
-        disabled={nodes.length === 0}
-        className="px-3 py-1 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-      >
-        Export JSON
-      </button>
-
-      <button
-        onClick={clearGraph}
-        disabled={nodes.length === 0}
-        className="px-3 py-1 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-      >
-        Clear
-      </button>
+      <div className="flex items-center gap-2 ml-8">
+        <button
+          onClick={handleValidate}
+          disabled={validating || nodes.length === 0}
+          className="px-4 py-2 rounded-full text-sm font-medium bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--accent)] transition-all duration-200"
+        >
+          {validating ? "Validating…" : "Validate"}
+        </button>
+        <button
+          onClick={handleExportJSON}
+          disabled={nodes.length === 0}
+          className="px-4 py-2 rounded-full text-sm font-medium bg-[var(--surface-elevated)] text-[var(--foreground-muted)] border border-[var(--border)] hover:bg-[var(--border-muted)] hover:text-[var(--foreground)] hover:border-[var(--border)] disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
+        >
+          Export JSON
+        </button>
+        <button
+          onClick={clearGraph}
+          disabled={nodes.length === 0}
+          className="px-4 py-2 rounded-full text-sm font-medium bg-[var(--surface-elevated)] text-[var(--foreground-muted)] border border-[var(--border)] hover:bg-[var(--danger-muted)] hover:text-[var(--danger)] hover:border-[var(--danger)]/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
+        >
+          Clear
+        </button>
+      </div>
 
       <div className="flex-1" />
 
       {validationResult && (
         <div
-          className={`text-xs px-2 py-1 rounded ${
+          className={`text-xs px-3 py-1.5 rounded-full font-medium ${
             validationResult.valid
-              ? "bg-green-100 text-green-700"
-              : "bg-red-100 text-red-700"
+              ? "bg-[var(--success-muted)] text-[var(--success)]"
+              : "bg-[var(--danger-muted)] text-[var(--danger)]"
           }`}
         >
           {validationResult.valid
-            ? `Valid - ${validationResult.total_params?.toLocaleString()} params`
+            ? `Valid · ${validationResult.total_params?.toLocaleString()} params`
             : validationResult.message}
         </div>
       )}
 
-      <div className="text-xs text-gray-400">
-        {nodes.length} blocks, {edges.length} connections
+      <div className="ml-4 text-xs font-mono text-[var(--foreground-muted)] tabular-nums">
+        {nodes.length} blocks · {edges.length} connections
       </div>
 
       {status === "running" && (
-        <div className="text-xs text-blue-600 font-medium animate-pulse">
-          Training...
+        <div className="ml-4 flex items-center gap-2">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--accent)] opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--accent)]" />
+          </span>
+          <span className="text-xs font-medium text-[var(--accent)]">
+            Training…
+          </span>
         </div>
       )}
-    </div>
+    </header>
   );
 }

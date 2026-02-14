@@ -10,7 +10,7 @@ import TrainingDashboard from "@/components/training/TrainingDashboard";
 export default function Home() {
   return (
     <ReactFlowProvider>
-      <div className="h-screen w-screen flex flex-col overflow-hidden">
+      <div className="h-screen w-screen flex flex-col overflow-hidden bg-[var(--background)]">
         <Toolbar />
         <div className="flex flex-1 overflow-hidden">
           <Sidebar />

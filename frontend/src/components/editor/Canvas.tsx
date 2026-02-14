@@ -16,7 +16,6 @@ import MLNode from "@/components/nodes/MLNode";
 
 type AppNode = Node<NodeData>;
 
-// Register all block types to use the generic MLNode component
 const nodeTypes = Object.fromEntries(
   BLOCK_REGISTRY.map((b) => [b.type, MLNode])
 );
@@ -71,7 +70,7 @@ export default function Canvas() {
   );
 
   return (
-    <div ref={reactFlowWrapper} className="flex-1 h-full">
+    <div ref={reactFlowWrapper} className="flex-1 h-full bg-[var(--background)]">
       <ReactFlow<AppNode, Edge>
         nodes={nodes}
         edges={edges}
@@ -95,13 +94,18 @@ export default function Canvas() {
         }}
         proOptions={{ hideAttribution: true }}
       >
-        <Background gap={15} size={1} />
-        <Controls />
+        <Background
+          gap={20}
+          size={1}
+          color="var(--border-muted)"
+          style={{ backgroundColor: "var(--background)" }}
+        />
+        <Controls className="!relative !top-auto !left-auto !transform-none !m-4" />
         <MiniMap
           nodeStrokeWidth={3}
           zoomable
           pannable
-          className="!bg-gray-100"
+          className="!bg-[var(--surface-elevated)] !border !border-[var(--border)] !rounded-lg !overflow-hidden"
         />
       </ReactFlow>
     </div>

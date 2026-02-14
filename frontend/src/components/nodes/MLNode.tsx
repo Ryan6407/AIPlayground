@@ -4,22 +4,34 @@ import { Handle, Position, NodeProps } from "@xyflow/react";
 import { getBlockDef } from "@/lib/blockRegistry";
 import { NodeData } from "@/store/graphStore";
 
+const NODE_WIDTH = 56;
+const NODE_HEIGHT = 24;
+
 export default function MLNode({ data, selected }: NodeProps) {
   const nodeData = data as unknown as NodeData;
   const def = getBlockDef(nodeData.blockType);
   if (!def) return null;
 
-  const borderColor = selected ? "#2563eb" : def.color;
-  const paramEntries = Object.entries(nodeData.params).filter(
-    ([key]) => key !== "shape"
-  );
+  const isIO = def.type === "input" || def.type === "output";
 
   return (
     <div
-      className="rounded-lg shadow-md bg-white min-w-[140px] border-2 text-xs"
-      style={{ borderColor }}
+      className={`flex items-center justify-center rounded transition-all duration-150 bg-[var(--surface-elevated)] ${
+        isIO
+          ? selected
+            ? "ring-1 ring-[var(--accent)]/40"
+            : ""
+          : selected
+            ? "border border-[var(--accent)] ring-1 ring-[var(--accent)]/40"
+            : "border border-[var(--border)] hover:border-[var(--foreground-muted)]/40"
+      }`}
+      style={{
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        ...(isIO ? {} : { borderLeftWidth: 2, borderLeftColor: def.color }),
+        ...(selected ? { boxShadow: "0 0 12px rgba(6, 182, 212, 0.1)" } : {}),
+      }}
     >
-      {/* Target handles */}
       {def.inputs.map((inp, i) => (
         <Handle
           key={inp.id}
@@ -27,46 +39,26 @@ export default function MLNode({ data, selected }: NodeProps) {
           position={Position.Top}
           id={inp.id}
           style={{
-            left: def.inputs.length === 1 ? "50%" : `${((i + 1) / (def.inputs.length + 1)) * 100}%`,
+            left:
+              def.inputs.length === 1
+                ? "50%"
+                : `${((i + 1) / (def.inputs.length + 1)) * 100}%`,
             background: def.color,
-            width: 10,
-            height: 10,
+            width: 4,
+            height: 4,
+            border: "1px solid var(--surface-elevated)",
           }}
           title={inp.label}
         />
       ))}
 
-      {/* Header */}
-      <div
-        className="px-3 py-1.5 font-semibold text-white rounded-t-md text-center"
-        style={{ backgroundColor: def.color }}
+      <span
+        className="font-medium text-[8px] uppercase tracking-wide truncate px-1 text-center w-full"
+        style={{ color: def.color }}
       >
         {def.label}
-      </div>
+      </span>
 
-      {/* Parameters summary */}
-      {(paramEntries.length > 0 || nodeData.inferredShape) && (
-        <div className="px-3 py-1.5 space-y-0.5">
-          {paramEntries.map(([key, value]) => (
-            <div key={key} className="flex justify-between gap-2 text-gray-600">
-              <span className="truncate">{key}:</span>
-              <span className="font-mono text-gray-900">
-                {Array.isArray(value) ? `[${value.join(",")}]` : String(value)}
-              </span>
-            </div>
-          ))}
-          {nodeData.inferredShape && (
-            <div className="flex justify-between gap-2 text-gray-400 border-t pt-0.5 mt-0.5">
-              <span>shape:</span>
-              <span className="font-mono">
-                [{nodeData.inferredShape.join(", ")}]
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Source handles */}
       {def.outputs.map((out, i) => (
         <Handle
           key={out.id}
@@ -74,10 +66,14 @@ export default function MLNode({ data, selected }: NodeProps) {
           position={Position.Bottom}
           id={out.id}
           style={{
-            left: def.outputs.length === 1 ? "50%" : `${((i + 1) / (def.outputs.length + 1)) * 100}%`,
+            left:
+              def.outputs.length === 1
+                ? "50%"
+                : `${((i + 1) / (def.outputs.length + 1)) * 100}%`,
             background: def.color,
-            width: 10,
-            height: 10,
+            width: 4,
+            height: 4,
+            border: "1px solid var(--surface-elevated)",
           }}
           title={out.label}
         />

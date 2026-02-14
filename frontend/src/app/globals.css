@@ -1,8 +1,24 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0c0f14;
+  --surface: #13171f;
+  --surface-elevated: #1a1f2a;
+  --border: #2a3142;
+  --border-muted: #1e2430;
+  --foreground: #e4e8f0;
+  --foreground-muted: #8b92a6;
+  --accent: #06b6d4;
+  --accent-hover: #22d3ee;
+  --accent-muted: rgba(6, 182, 212, 0.15);
+  --success: #10b981;
+  --success-muted: rgba(16, 185, 129, 0.15);
+  --danger: #ef4444;
+  --danger-muted: rgba(239, 68, 68, 0.15);
+  --warning: #f59e0b;
+  --glow: 0 0 20px rgba(6, 182, 212, 0.15);
+  --radius: 8px;
+  --radius-lg: 12px;
 }
 
 @theme inline {
@@ -12,15 +28,90 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  border-color: var(--border-muted);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* React Flow overrides for dark theme */
+.react-flow__node {
+  background: transparent !important;
+  padding: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Remove default input/output node styling so custom nodes aren't wrapped in a box */
+.react-flow__node-input,
+.react-flow__node-output,
+.react-flow__node-default {
+  padding: 0 !important;
+  width: auto !important;
+  min-width: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.react-flow__background {
+  background: var(--background) !important;
+}
+
+.react-flow__edge-path {
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.react-flow__edge.animated path {
+  stroke: var(--accent);
+  stroke-dasharray: 5 5;
+  animation: dash 0.5s linear infinite;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+
+.react-flow__controls {
+  background: var(--surface-elevated) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: none !important;
+}
+
+.react-flow__controls-button {
+  background: var(--surface-elevated) !important;
+  border-bottom: 1px solid var(--border-muted) !important;
+  color: var(--foreground-muted) !important;
+  fill: var(--foreground-muted) !important;
+}
+
+.react-flow__controls-button:hover {
+  background: var(--surface) !important;
+  color: var(--accent) !important;
+  fill: var(--accent) !important;
+}
+
+.react-flow__minimap {
+  background: var(--surface-elevated) !important;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.react-flow__attribution {
+  background: transparent !important;
+}
+
+.react-flow__attribution a {
+  color: var(--foreground-muted) !important;
+  opacity: 0.5;
 }

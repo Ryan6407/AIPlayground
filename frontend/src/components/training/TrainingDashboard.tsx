@@ -18,18 +18,21 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
 
 const DATASETS = [
-  { id: "mnist", label: "MNIST", description: "Handwritten digits, 28x28" },
+  { id: "mnist", label: "MNIST", description: "Handwritten digits, 28×28" },
   {
     id: "fashion_mnist",
     label: "Fashion-MNIST",
-    description: "Clothing items, 28x28",
+    description: "Clothing items, 28×28",
   },
   {
     id: "cifar10",
     label: "CIFAR-10",
-    description: "Color images 32x32, 10 classes",
+    description: "Color images 32×32, 10 classes",
   },
 ];
+
+const inputClass =
+  "w-full px-3 py-2 rounded-lg text-sm bg-[var(--surface-elevated)] border border-[var(--border)] text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50 focus:border-[var(--accent)] disabled:opacity-50 transition-all";
 
 export default function TrainingDashboard() {
   const { nodes, edges } = useGraphStore();
@@ -76,7 +79,6 @@ export default function TrainingDashboard() {
       const { job_id } = await res.json();
       startTraining(job_id);
 
-      // Connect WebSocket for real-time updates
       const socket = new WebSocket(`${WS_BASE}/ws/training/${job_id}`);
       setWs(socket);
 
@@ -124,34 +126,43 @@ export default function TrainingDashboard() {
     setStopped();
   };
 
-  const isIdle = status === "idle" || status === "completed" || status === "error" || status === "stopped";
+  const isIdle =
+    status === "idle" ||
+    status === "completed" ||
+    status === "error" ||
+    status === "stopped";
+
+  const chartStroke = {
+    train: "var(--accent)",
+    val: "#f43f5e",
+  };
 
   return (
-    <div className="w-80 bg-gray-50 border-l border-gray-200 overflow-y-auto flex-shrink-0 flex flex-col">
-      <div className="p-4 border-b">
-        <h2 className="font-bold text-sm text-gray-700 mb-3">Training</h2>
+    <div className="w-80 flex-shrink-0 border-l border-[var(--border-muted)] bg-[var(--surface)] overflow-y-auto flex flex-col">
+      <div className="p-4 border-b border-[var(--border-muted)]">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--foreground-muted)] mb-4">
+          Training
+        </h2>
 
-        {/* Dataset selector */}
-        <label className="block text-xs font-medium text-gray-600 mb-1">
+        <label className="block text-xs font-medium text-[var(--foreground-muted)] mb-1.5">
           Dataset
         </label>
         <select
           value={datasetId}
           onChange={(e) => setDataset(e.target.value)}
           disabled={!isIdle}
-          className="w-full px-2 py-1 border border-gray-300 rounded text-sm mb-3 disabled:opacity-50"
+          className={`${inputClass} mb-4`}
         >
           {DATASETS.map((d) => (
             <option key={d.id} value={d.id}>
-              {d.label} - {d.description}
+              {d.label} — {d.description}
             </option>
           ))}
         </select>
 
-        {/* Hyperparameters */}
-        <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="grid grid-cols-2 gap-3 mb-4">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
+            <label className="block text-xs font-medium text-[var(--foreground-muted)] mb-1.5">
               Epochs
             </label>
             <input
@@ -163,11 +174,11 @@ export default function TrainingDashboard() {
                 setConfig({ epochs: parseInt(e.target.value) || 1 })
               }
               disabled={!isIdle}
-              className="w-full px-2 py-1 border border-gray-300 rounded text-sm disabled:opacity-50"
+              className={inputClass}
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
+            <label className="block text-xs font-medium text-[var(--foreground-muted)] mb-1.5">
               Batch Size
             </label>
             <input
@@ -178,11 +189,11 @@ export default function TrainingDashboard() {
                 setConfig({ batch_size: parseInt(e.target.value) || 1 })
               }
               disabled={!isIdle}
-              className="w-full px-2 py-1 border border-gray-300 rounded text-sm disabled:opacity-50"
+              className={inputClass}
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
+            <label className="block text-xs font-medium text-[var(--foreground-muted)] mb-1.5">
               Learning Rate
             </label>
             <input
@@ -197,11 +208,11 @@ export default function TrainingDashboard() {
                 })
               }
               disabled={!isIdle}
-              className="w-full px-2 py-1 border border-gray-300 rounded text-sm disabled:opacity-50"
+              className={inputClass}
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
+            <label className="block text-xs font-medium text-[var(--foreground-muted)] mb-1.5">
               Optimizer
             </label>
             <select
@@ -212,7 +223,7 @@ export default function TrainingDashboard() {
                 })
               }
               disabled={!isIdle}
-              className="w-full px-2 py-1 border border-gray-300 rounded text-sm disabled:opacity-50"
+              className={inputClass}
             >
               <option value="adam">Adam</option>
               <option value="sgd">SGD</option>
@@ -221,36 +232,35 @@ export default function TrainingDashboard() {
           </div>
         </div>
 
-        {/* Action buttons */}
         {isIdle ? (
           <button
             onClick={handleStartTraining}
             disabled={nodes.length === 0}
-            className="w-full px-3 py-2 bg-green-500 text-white text-sm font-semibold rounded hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full px-4 py-2.5 rounded-lg text-sm font-semibold bg-[var(--success)] text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
           >
             Start Training
           </button>
         ) : (
           <button
             onClick={handleStop}
-            className="w-full px-3 py-2 bg-red-500 text-white text-sm font-semibold rounded hover:bg-red-600 transition-colors"
+            className="w-full px-4 py-2.5 rounded-lg text-sm font-semibold bg-[var(--danger)] text-white hover:opacity-90 transition-all"
           >
             Stop Training
           </button>
         )}
 
         {status === "error" && (
-          <div className="mt-2 text-xs text-red-600 bg-red-50 p-2 rounded">
+          <div className="mt-3 text-xs text-[var(--danger)] bg-[var(--danger-muted)] p-2.5 rounded-lg">
             {errorMessage}
           </div>
         )}
 
         {status === "completed" && (
-          <div className="mt-2 text-xs text-green-600 bg-green-50 p-2 rounded">
-            Training completed!
+          <div className="mt-3 text-xs text-[var(--success)] bg-[var(--success-muted)] p-2.5 rounded-lg flex items-center justify-between">
+            <span>Training completed!</span>
             <button
               onClick={reset}
-              className="ml-2 underline hover:no-underline"
+              className="font-medium underline hover:no-underline"
             >
               Reset
             </button>
@@ -258,23 +268,23 @@ export default function TrainingDashboard() {
         )}
       </div>
 
-      {/* Live metrics */}
       {(status === "running" || metrics.length > 0) && (
         <div className="p-4 flex-1">
-          {/* Progress */}
           {status === "running" && (
-            <div className="mb-3">
-              <div className="flex justify-between text-xs text-gray-500 mb-1">
+            <div className="mb-4">
+              <div className="flex justify-between text-xs text-[var(--foreground-muted)] mb-1.5">
                 <span>
                   Epoch {currentEpoch} / {config.epochs}
                 </span>
                 {currentBatchLoss !== null && (
-                  <span>Loss: {currentBatchLoss.toFixed(4)}</span>
+                  <span className="font-mono text-[var(--accent)]">
+                    Loss: {currentBatchLoss.toFixed(4)}
+                  </span>
                 )}
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="w-full h-1.5 rounded-full bg-[var(--surface-elevated)] overflow-hidden">
                 <div
-                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                  className="h-full rounded-full bg-gradient-to-r from-[var(--accent)] to-cyan-400 transition-all duration-300"
                   style={{
                     width: `${(currentEpoch / config.epochs) * 100}%`,
                   }}
@@ -283,27 +293,43 @@ export default function TrainingDashboard() {
             </div>
           )}
 
-          {/* Loss chart */}
           {metrics.length > 0 && (
             <>
-              <h3 className="text-xs font-semibold text-gray-600 mb-2">
+              <h3 className="text-xs font-semibold text-[var(--foreground-muted)] mb-2">
                 Loss
               </h3>
-              <div className="h-40 mb-4">
+              <div className="h-40 mb-5">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={metrics}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="epoch" tick={{ fontSize: 10 }} />
-                    <YAxis tick={{ fontSize: 10 }} />
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="var(--border-muted)"
+                    />
+                    <XAxis
+                      dataKey="epoch"
+                      tick={{ fontSize: 10, fill: "var(--foreground-muted)" }}
+                      stroke="var(--border-muted)"
+                    />
+                    <YAxis
+                      tick={{ fontSize: 10, fill: "var(--foreground-muted)" }}
+                      stroke="var(--border-muted)"
+                    />
                     <Tooltip
-                      contentStyle={{ fontSize: 11 }}
-                      formatter={(value) => typeof value === "number" ? value.toFixed(4) : value}
+                      contentStyle={{
+                        fontSize: 11,
+                        background: "var(--surface-elevated)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "var(--radius)",
+                      }}
+                      formatter={(value) =>
+                        typeof value === "number" ? value.toFixed(4) : value
+                      }
                     />
                     <Legend wrapperStyle={{ fontSize: 10 }} />
                     <Line
                       type="monotone"
                       dataKey="train_loss"
-                      stroke="#3b82f6"
+                      stroke={chartStroke.train}
                       strokeWidth={2}
                       dot={false}
                       name="Train"
@@ -311,7 +337,7 @@ export default function TrainingDashboard() {
                     <Line
                       type="monotone"
                       dataKey="val_loss"
-                      stroke="#ef4444"
+                      stroke={chartStroke.val}
                       strokeWidth={2}
                       dot={false}
                       name="Validation"
@@ -320,35 +346,55 @@ export default function TrainingDashboard() {
                 </ResponsiveContainer>
               </div>
 
-              {/* Accuracy chart */}
               {metrics[0]?.val_acc !== undefined && (
                 <>
-                  <h3 className="text-xs font-semibold text-gray-600 mb-2">
+                  <h3 className="text-xs font-semibold text-[var(--foreground-muted)] mb-2">
                     Accuracy
                   </h3>
                   <div className="h-40">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={metrics}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="epoch" tick={{ fontSize: 10 }} />
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          stroke="var(--border-muted)"
+                        />
+                        <XAxis
+                          dataKey="epoch"
+                          tick={{
+                            fontSize: 10,
+                            fill: "var(--foreground-muted)",
+                          }}
+                          stroke="var(--border-muted)"
+                        />
                         <YAxis
-                          tick={{ fontSize: 10 }}
+                          tick={{
+                            fontSize: 10,
+                            fill: "var(--foreground-muted)",
+                          }}
+                          stroke="var(--border-muted)"
                           domain={[0, 1]}
                           tickFormatter={(v) =>
                             `${(Number(v) * 100).toFixed(0)}%`
                           }
                         />
                         <Tooltip
-                          contentStyle={{ fontSize: 11 }}
+                          contentStyle={{
+                            fontSize: 11,
+                            background: "var(--surface-elevated)",
+                            border: "1px solid var(--border)",
+                            borderRadius: "var(--radius)",
+                          }}
                           formatter={(value) =>
-                            typeof value === "number" ? `${(value * 100).toFixed(1)}%` : value
+                            typeof value === "number"
+                              ? `${(value * 100).toFixed(1)}%`
+                              : value
                           }
                         />
                         <Legend wrapperStyle={{ fontSize: 10 }} />
                         <Line
                           type="monotone"
                           dataKey="train_acc"
-                          stroke="#3b82f6"
+                          stroke={chartStroke.train}
                           strokeWidth={2}
                           dot={false}
                           name="Train"
@@ -356,7 +402,7 @@ export default function TrainingDashboard() {
                         <Line
                           type="monotone"
                           dataKey="val_acc"
-                          stroke="#ef4444"
+                          stroke={chartStroke.val}
                           strokeWidth={2}
                           dot={false}
                           name="Validation"
