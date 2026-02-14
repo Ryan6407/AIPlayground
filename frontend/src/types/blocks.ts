@@ -1,4 +1,4 @@
-export type ParamType = "number" | "select" | "boolean" | "tuple";
+export type ParamType = "number" | "select" | "boolean" | "tuple" | "text";
 export type BlockCategory =
   | "io"
   | "layer"
@@ -23,6 +23,7 @@ export interface ParamDef {
   max?: number;
   step?: number;
   default: unknown;
+  separator?: boolean;
 }
 
 export interface BlockDefinition {

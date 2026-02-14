@@ -18,24 +18,19 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
 
 const DATASETS = [
-  { id: "mnist", label: "MNIST", description: "Handwritten digits, 28×28" },
-  {
-    id: "fashion_mnist",
-    label: "Fashion-MNIST",
-    description: "Clothing items, 28×28",
-  },
-  {
-    id: "cifar10",
-    label: "CIFAR-10",
-    description: "Color images 32×32, 10 classes",
-  },
+  { id: "mnist", label: "MNIST", description: "Handwritten digits, 28×28",
+    data_modality: "image", dataset_size: 60000 },
+  { id: "fashion_mnist", label: "Fashion-MNIST", description: "Clothing items, 28×28",
+    data_modality: "image", dataset_size: 60000 },
+  { id: "cifar10", label: "CIFAR-10", description: "Color images 32×32, 10 classes",
+    data_modality: "image", dataset_size: 50000 },
 ];
 
 const inputClass =
   "w-full px-3 py-2 rounded-lg text-sm bg-[var(--surface-elevated)] border border-[var(--border)] text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50 focus:border-[var(--accent)] disabled:opacity-50 transition-all";
 
 export default function TrainingDashboard() {
-  const { nodes, edges } = useGraphStore();
+  const { nodes, edges, updateNodeParams } = useGraphStore();
   const {
     status,
     datasetId,
@@ -149,7 +144,21 @@ export default function TrainingDashboard() {
         </label>
         <select
           value={datasetId}
-          onChange={(e) => setDataset(e.target.value)}
+          onChange={(e) => {
+            const id = e.target.value;
+            setDataset(id);
+            const ds = DATASETS.find((d) => d.id === id);
+            if (ds) {
+              const inputNode = nodes.find((n) => n.type === "input");
+              if (inputNode) {
+                updateNodeParams(inputNode.id, {
+                  data_modality: ds.data_modality,
+                  dataset_size: ds.dataset_size,
+                  description: ds.description,
+                });
+              }
+            }
+          }}
           disabled={!isIdle}
           className={`${inputClass} mb-4`}
         >

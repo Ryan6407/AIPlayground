@@ -58,6 +58,13 @@ export default function PropertiesPanel() {
         <div className="space-y-4">
           {def.parameters.map((param) => (
             <div key={param.key}>
+              {param.separator && (
+                <div className="border-t border-[var(--border-muted)] pt-3 mb-3 -mt-1">
+                  <span className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]/60 font-semibold">
+                    Input Context
+                  </span>
+                </div>
+              )}
               <label className="block text-xs font-medium text-[var(--foreground-muted)] mb-1.5">
                 {param.label}
               </label>
@@ -121,6 +128,16 @@ export default function PropertiesPanel() {
                   }}
                   placeholder="e.g. 1, 28, 28"
                   className={`${inputClass} font-mono`}
+                />
+              )}
+
+              {param.type === "text" && (
+                <input
+                  type="text"
+                  value={String(params[param.key] ?? param.default ?? "")}
+                  onChange={(e) => handleChange(param.key, e.target.value)}
+                  placeholder={param.label}
+                  className={inputClass}
                 />
               )}
             </div>

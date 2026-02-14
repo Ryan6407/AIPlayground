@@ -6,7 +6,8 @@
       "Bash(npx create-next-app@latest:*)",
       "Bash(npm install:*)",
       "Bash(npm run build:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Read(//c/Users/peter/Downloads/**)"
     ]
   }
 }

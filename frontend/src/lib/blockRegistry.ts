@@ -10,8 +10,29 @@ export const BLOCK_REGISTRY: BlockDefinition[] = [
     outputs: [{ id: "out", label: "Output" }],
     parameters: [
       { key: "shape", label: "Shape", type: "tuple", default: [1, 28, 28] },
+      {
+        key: "data_modality",
+        label: "Data Modality",
+        type: "select",
+        options: ["image", "tabular", "text", "audio", "time_series", "other"],
+        default: "image",
+        separator: true,
+      },
+      {
+        key: "dataset_size",
+        label: "Dataset Size",
+        type: "number",
+        min: 0,
+        default: 0,
+      },
+      {
+        key: "description",
+        label: "Description",
+        type: "text",
+        default: "",
+      },
     ],
-    defaultParams: { shape: [1, 28, 28] },
+    defaultParams: { shape: [1, 28, 28], data_modality: "image", dataset_size: 0, description: "" },
   },
   {
     type: "output",
