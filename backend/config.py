@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 
     runpod_api_key: str = ""
     runpod_enabled: bool = False
+    openai_api_key: str = ""
 
     class Config:
         env_file = ".env"
