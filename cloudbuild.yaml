@@ -31,6 +31,16 @@ steps:
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
+      - '--memory'
+      - '2Gi'
+      - '--cpu'
+      - '1'
+      - '--timeout'
+      - '300'
+      - '--max-instances'
+      - '10'
+      - '--min-instances'
+      - '0'
 
 images:
   - 'gcr.io/$PROJECT_ID/aiplayground-backend:$COMMIT_SHA'
