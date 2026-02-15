@@ -6,10 +6,10 @@ import asyncio
 
 # Configure GPU resources for RunPod Flash
 gpu_config = LiveServerless(
-    name="aiplayground-training-blocks",  # Static name for endpoint reuse
+    name="aiplayground-training-classification",  # Bumped to force fresh container build
     gpus=[GpuGroup.AMPERE_24],  # Using A4000/RTX 3090 (24GB) - more available and cheaper
-    workersMax=1,  # Reduced to 1 for faster initialization
-    workersMin=0,  # Auto-scale from 0 (no idle workers)
+    workersMax=2,  # Reduced to 1 for faster initialization
+    workersMin=1,  # Auto-scale from 0 (no idle workers)
     idleTimeout=300  # Scale down after 10 seconds of inactivity
 )
 
@@ -59,23 +59,31 @@ async def train_model_flash(graph_dict: dict, dataset_id: str, config_dict: dict
     try:
         # Register custom dataset if provided
         if dataset_id.startswith("custom:") and custom_dataset_meta and custom_dataset_signed_url:
+            print(f"[FLASH] Registering custom dataset: {dataset_id}, format={custom_dataset_meta.get('format')}, shape={custom_dataset_meta.get('input_shape')}")
             register_custom_dataset(dataset_id, custom_dataset_meta, custom_dataset_signed_url)
+            print("[FLASH] Custom dataset registered OK")
 
         # Parse and validate inputs
         graph = GraphSchema(**graph_dict)
         config = TrainingConfig(**config_dict)
+        print(f"[FLASH] Parsed graph and config OK, epochs={config.epochs}, batch_size={config.batch_size}")
 
         # Build model
         input_shape = get_dataset_shape(dataset_id)
+        print(f"[FLASH] Dataset shape: {input_shape}")
         model = build_model(graph, input_shape)
+        print(f"[FLASH] Model built OK")
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = model.to(device)
+        print(f"[FLASH] Model on {device}")
 
         # Load data
+        print(f"[FLASH] Loading dataloaders...")
         train_loader, val_loader = get_dataloaders(
             dataset_id, config.batch_size, config.train_split
         )
+        print(f"[FLASH] Dataloaders ready: {len(train_loader)} train batches, {len(val_loader)} val batches")
 
         # Setup loss function
         output_nodes = [n for n in graph.nodes if n.type == "output"]
