@@ -3,11 +3,14 @@
 import { memo, useCallback, useEffect, useState } from "react";
 import type { Node, NodeProps } from "@xyflow/react";
 import { useReactFlow } from "@xyflow/react";
+import { Upload } from "lucide-react";
 import { BaseBlock } from "./BaseBlock";
 import { useShapes } from "@/neuralcanvas/components/canvas/ShapeContext";
 import { getShapeLabel } from "@/neuralcanvas/lib/shapeEngine";
 import { CANVAS_UI_SCALE } from "@/neuralcanvas/lib/canvasConstants";
-import { fetchDatasets } from "@/neuralcanvas/lib/trainingApi";
+import { fetchDatasets, type DatasetInfo } from "@/neuralcanvas/lib/trainingApi";
+import { DatasetUploadModal } from "@/neuralcanvas/components/datasets/DatasetUploadModal";
+import { createClient } from "@/lib/supabase/client";
 
 interface BlockData extends Record<string, unknown> {
   params: Record<string, number | string>;
@@ -47,20 +50,33 @@ function InputBlockComponent({ id, data, selected }: NodeProps<Node<BlockData>>)
   const params = data?.params ?? {};
   const datasetId = (params.dataset_id as string) ?? "";
 
-  const [datasets, setDatasets] = useState<{ id: string; name: string; input_shape: number[] }[]>([]);
+  const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
   const [datasetError, setDatasetError] = useState<string | null>(null);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
+  // Get Supabase session for auth
   useEffect(() => {
-    let cancelled = false;
-    fetchDatasets()
+    const supabase = createClient();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setAccessToken(session?.access_token ?? null);
+    });
+  }, []);
+
+  // Fetch datasets (with auth token if available)
+  const loadDatasets = useCallback(() => {
+    fetchDatasets(accessToken ?? undefined)
       .then((list) => {
-        if (!cancelled) setDatasets(list.map((d) => ({ id: d.id, name: d.name, input_shape: d.input_shape ?? [1, 28, 28] })));
+        setDatasets(list);
       })
       .catch((e) => {
-        if (!cancelled) setDatasetError(e instanceof Error ? e.message : "Failed to load datasets");
+        setDatasetError(e instanceof Error ? e.message : "Failed to load datasets");
       });
-    return () => { cancelled = true; };
-  }, []);
+  }, [accessToken]);
+
+  useEffect(() => {
+    loadDatasets();
+  }, [loadDatasets]);
 
   useEffect(() => {
     if (!datasetId || !datasets.length || (params.input_shape as string)?.length) return;
@@ -99,6 +115,33 @@ function InputBlockComponent({ id, data, selected }: NodeProps<Node<BlockData>>)
     [id, setNodes, datasets],
   );
 
+  const handleUploaded = useCallback(
+    (dataset: DatasetInfo) => {
+      // Refresh the list and auto-select the new dataset
+      loadDatasets();
+      // Auto-select by updating the node params
+      const inputShape = dataset.input_shape?.length ? dataset.input_shape.join(",") : "";
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id !== id) return n;
+          const prevParams = (n.data?.params && typeof n.data.params === "object")
+            ? (n.data.params as Record<string, number | string>) : {};
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              params: { ...prevParams, dataset_id: dataset.id, input_shape: inputShape },
+            },
+          };
+        }),
+      );
+    },
+    [id, setNodes, loadDatasets],
+  );
+
+  const builtinDatasets = datasets.filter((d) => d.is_builtin);
+  const customDatasets = datasets.filter((d) => !d.is_builtin);
+
   return (
     <BaseBlock id={id} blockType="Input" params={params} selected={!!selected} data={data}>
       <InputViz />
@@ -107,20 +150,57 @@ function InputBlockComponent({ id, data, selected }: NodeProps<Node<BlockData>>)
           <span className="text-[var(--foreground-muted)] font-mono shrink-0" style={{ fontSize: `${7 * s}px` }}>out</span>
           <span className="font-mono text-[var(--block-input)] truncate min-w-0 opacity-90" style={{ fontSize: `${7 * s}px` }}>{outLabel}</span>
         </div>
-        <select
-          value={datasetId}
-          onChange={onDatasetChange}
-          disabled={!!datasetError}
-          className="nodrag nopan w-full mt-0.5 px-1 py-1 rounded bg-[var(--surface-elevated)] border border-[var(--border)] text-[var(--foreground)] font-mono focus:outline-none focus:ring-1 focus:ring-[var(--accent-muted)] disabled:opacity-50 min-h-[18px]"
-          style={{ fontSize: `${8 * s}px` }}
-          title={datasetError ?? "Dataset"}
-        >
-          <option value="">Dataset…</option>
-          {datasets.map((d) => (
-            <option key={d.id} value={d.id} style={{ fontSize: `${8 * s}px` }}>{d.name}</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-0.5">
+          <select
+            value={datasetId}
+            onChange={onDatasetChange}
+            disabled={!!datasetError}
+            className="nodrag nopan flex-1 mt-0.5 px-1 py-1 rounded bg-[var(--surface-elevated)] border border-[var(--border)] text-[var(--foreground)] font-mono focus:outline-none focus:ring-1 focus:ring-[var(--accent-muted)] disabled:opacity-50 min-h-[18px]"
+            style={{ fontSize: `${8 * s}px` }}
+            title={datasetError ?? "Dataset"}
+          >
+            <option value="">Dataset...</option>
+            {builtinDatasets.length > 0 && (
+              <optgroup label="Built-in">
+                {builtinDatasets.map((d) => (
+                  <option key={d.id} value={d.id} style={{ fontSize: `${8 * s}px` }}>{d.name}</option>
+                ))}
+              </optgroup>
+            )}
+            {customDatasets.length > 0 && (
+              <optgroup label="My Datasets">
+                {customDatasets.map((d) => (
+                  <option key={d.id} value={d.id} style={{ fontSize: `${8 * s}px` }}>{d.name}</option>
+                ))}
+              </optgroup>
+            )}
+            {/* Fallback: if no grouping needed (e.g. no custom datasets and no auth) */}
+            {builtinDatasets.length === 0 && customDatasets.length === 0 && datasets.map((d) => (
+              <option key={d.id} value={d.id} style={{ fontSize: `${8 * s}px` }}>{d.name}</option>
+            ))}
+          </select>
+          {accessToken && (
+            <button
+              onClick={() => setUploadOpen(true)}
+              className="nodrag nopan mt-0.5 p-1 rounded bg-[var(--surface-elevated)] border border-[var(--border)] text-[var(--foreground-muted)] hover:text-[var(--foreground)] hover:bg-[var(--accent-muted)] transition-colors"
+              title="Upload custom dataset"
+              style={{ fontSize: `${8 * s}px` }}
+            >
+              <Upload size={12} />
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Upload modal (rendered via portal, outside canvas scaling) */}
+      {accessToken && (
+        <DatasetUploadModal
+          open={uploadOpen}
+          onClose={() => setUploadOpen(false)}
+          onUploaded={handleUploaded}
+          accessToken={accessToken}
+        />
+      )}
     </BaseBlock>
   );
 }
