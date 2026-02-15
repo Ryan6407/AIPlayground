@@ -34,6 +34,7 @@ import {
   Hash,
   Percent,
   Sparkles,
+  Cpu,
   type LucideIcon,
 } from "lucide-react";
 
@@ -56,6 +57,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   hash: Hash,
   percent: Percent,
   sparkles: Sparkles,
+  cpu: Cpu,
 };
 
 const FRIENDLY_NAMES: Record<string, string> = {
