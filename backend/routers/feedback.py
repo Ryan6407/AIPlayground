@@ -87,7 +87,12 @@ def _build_paper_context(paper: str | None, quiz_q: str | None, choices: list[st
     """Build optional paper + quiz context for the LLM."""
     parts = []
     if paper:
-        parts.append(f"Paper / task context:\n{paper}")
+        parts.append(
+            "**Level task (use this as the primary context):**\n"
+            "The user is working on a level with this goal. Use it to guide your feedback. "
+            "Do not ask them to 'provide more details' or 'describe the problem'—you already have the task below.\n\n"
+            f"{paper}"
+        )
     if quiz_q and choices is not None:
         parts.append(f"Current multiple choice question: {quiz_q}")
         parts.append(f"Choices: {', '.join(choices)}")
@@ -354,6 +359,11 @@ async def _generate_feedback_unified(
         extra = _build_paper_context(paper_context, quiz_question, quiz_choices, quiz_correct)
         extra_block = f"\n\n{extra}" if extra else ""
 
+        level_instruction = (
+            "\n- When a **level task** is provided above, treat it as the main context. "
+            "If the user's message is vague (e.g. 'help', 'what do you think?'), give feedback on how their design relates to that task—what matches, what's missing, or what to try next. Do not ask them to describe the problem or provide more details."
+        ) if extra else ""
+
         system_content = f"""You are an expert in deep learning and neural network architecture.
 The user is building a neural network in a visual playground. You see their current design as full JSON below.
 
@@ -365,6 +375,7 @@ Current design (full JSON graph):
 {BLOCKS_AND_SHAPES_REFERENCE}
 
 **How to respond:**
+{level_instruction}
 - **Decide from the user's message** whether they are asking you to *produce a new or revised architecture* (e.g. "design a better one", "improve my model", "suggest a new architecture", "how can I improve", "what would you change") or whether they just want *advice, explanation, or critique* without a full new design.
 
 - **If they want a new/improved architecture designed:** Write a short explanation (1–3 sentences), then output the complete new graph as a single JSON object in a markdown code block.

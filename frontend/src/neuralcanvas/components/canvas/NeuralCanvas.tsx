@@ -236,6 +236,7 @@ function CanvasInner({
   initialEdges,
   playgroundId,
   playgroundName,
+  challengeTask,
   challengeSolutionGraph,
   challengeLevelNumber,
   onChallengeSuccess,
@@ -247,6 +248,7 @@ function CanvasInner({
   initialEdges?: Edge[];
   playgroundId?: string;
   playgroundName?: string;
+  challengeTask?: string | null;
   challengeSolutionGraph?: GraphSchema | null;
   challengeLevelNumber?: number | null;
   onChallengeSuccess?: (levelNumber: number) => void;
@@ -645,10 +647,15 @@ function CanvasInner({
           metadata
         );
         const base = getApiBase();
+        const body: { graph: GraphSchema; messages: typeof newMessages; paper_context?: string } = {
+          graph,
+          messages: newMessages,
+        };
+        if (challengeTask?.trim()) body.paper_context = challengeTask.trim();
         const res = await fetch(`${base}/api/feedback`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ graph, messages: newMessages }),
+          body: JSON.stringify(body),
         });
         const data = await res.json().catch(() => ({}));
         let assistantContent: string;
@@ -722,7 +729,7 @@ function CanvasInner({
         setFeedbackLoading(false);
       }
     },
-    [nodes, edges, playgroundId, feedbackMessages]
+    [nodes, edges, playgroundId, feedbackMessages, challengeTask]
   );
 
   // ── Keyboard shortcuts ──
@@ -1467,6 +1474,7 @@ export default function NeuralCanvas({
                 initialEdges={initialEdges}
                 playgroundId={playgroundId}
                 playgroundName={playgroundName}
+                challengeTask={challengeTask}
                 challengeSolutionGraph={challengeSolutionGraph}
                 challengeLevelNumber={challengeLevelNumber}
                 onChallengeSuccess={onChallengeSuccess}
