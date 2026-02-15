@@ -566,24 +566,27 @@ const GPT_STEP_META = {
   },
 };
 
-// Hardcoded staggered layout: some blocks up (y=160), others down (y=320), alternating so the diagram has clear rows.
-const GPT_DX = 260;
-const GPT_Y_UP = 160;
-const GPT_Y_DOWN = 320;
+// Hardcoded staggered layout: large horizontal (440px) and vertical gaps so no lines are obscured.
+const GPT_DX = 440;
+const GPT_Y_UP = 100;    // upper row: embed, ln_pre, add_1, linear_1, linear_2, ln_post
+const GPT_Y_DOWN = 380;  // middle row: input, attn, gelu_1, add_2
+const GPT_Y_POS_EMBED = -100; // positional embedding above the others
+const GPT_Y_LN_MID = 700; // 7th block (ln_mid) well below add_2 so wire connects up to bottom of Add
+const GPT_Y_OUTPUT = 60;
 const GPT_NODES = {
   text_input_1: { id: "text_input_1", type: "text_input", params: { batch_size: 1, seq_len: 128 }, position: { x: 80, y: GPT_Y_DOWN } },
   text_embed_1: { id: "text_embed_1", type: "text_embedding", params: { vocab_size: 50257, embedding_dim: 128 }, position: { x: 80 + GPT_DX, y: GPT_Y_UP } },
-  pos_embed_1: { id: "pos_embed_1", type: "positional_embedding", params: { d_model: 128, max_len: 1024 }, position: { x: 80 + GPT_DX * 2, y: GPT_Y_DOWN } },
+  pos_embed_1: { id: "pos_embed_1", type: "positional_embedding", params: { d_model: 128, max_len: 1024 }, position: { x: 80 + GPT_DX * 2, y: GPT_Y_POS_EMBED } },
   ln_pre: { id: "ln_pre", type: "layernorm", params: { normalized_shape: 128 }, position: { x: 80 + GPT_DX * 3, y: GPT_Y_UP } },
   attn: { id: "attn", type: "attention", params: { embed_dim: 128, num_heads: 4 }, position: { x: 80 + GPT_DX * 4, y: GPT_Y_DOWN } },
   add_1: { id: "add_1", type: "add", params: {}, position: { x: 80 + GPT_DX * 5, y: GPT_Y_UP } },
-  ln_mid: { id: "ln_mid", type: "layernorm", params: { normalized_shape: 128 }, position: { x: 80 + GPT_DX * 6, y: GPT_Y_DOWN } },
+  ln_mid: { id: "ln_mid", type: "layernorm", params: { normalized_shape: 128 }, position: { x: 80 + GPT_DX * 6, y: GPT_Y_LN_MID } },
   linear_1: { id: "linear_1", type: "linear", params: { in_features: 128, out_features: 512 }, position: { x: 80 + GPT_DX * 7, y: GPT_Y_UP } },
   gelu_1: { id: "gelu_1", type: "activation", params: { activation: "gelu" }, position: { x: 80 + GPT_DX * 8, y: GPT_Y_DOWN } },
   linear_2: { id: "linear_2", type: "linear", params: { in_features: 512, out_features: 128 }, position: { x: 80 + GPT_DX * 9, y: GPT_Y_UP } },
   add_2: { id: "add_2", type: "add", params: {}, position: { x: 80 + GPT_DX * 10, y: GPT_Y_DOWN } },
   ln_post: { id: "ln_post", type: "layernorm", params: { normalized_shape: 128 }, position: { x: 80 + GPT_DX * 11, y: GPT_Y_UP } },
-  output_1: { id: "output_1", type: "output", params: {}, position: { x: 80 + GPT_DX * 12, y: 80 } },
+  output_1: { id: "output_1", type: "output", params: {}, position: { x: 80 + GPT_DX * 12, y: GPT_Y_OUTPUT } },
 };
 
 const GPT_EDGES = {
@@ -595,10 +598,10 @@ const GPT_EDGES = {
   e4: { id: "e4", source: "attn", sourceHandle: "out", target: "add_1", targetHandle: "in_b" },
   e5: { id: "e5", source: "add_1", sourceHandle: "out", target: "ln_mid", targetHandle: "in" },
   e6: { id: "e6", source: "ln_mid", sourceHandle: "out", target: "linear_1", targetHandle: "in" },
-  e7: { id: "e7", source: "ln_mid", sourceHandle: "out", target: "add_2", targetHandle: "in_a" },
+  e7: { id: "e7", source: "ln_mid", sourceHandle: "out", target: "add_2", targetHandle: "in_b" },
   e8: { id: "e8", source: "linear_1", sourceHandle: "out", target: "gelu_1", targetHandle: "in" },
   e9: { id: "e9", source: "gelu_1", sourceHandle: "out", target: "linear_2", targetHandle: "in" },
-  e10: { id: "e10", source: "linear_2", sourceHandle: "out", target: "add_2", targetHandle: "in_b" },
+  e10: { id: "e10", source: "linear_2", sourceHandle: "out", target: "add_2", targetHandle: "in_a" },
   e11: { id: "e11", source: "add_2", sourceHandle: "out", target: "ln_post", targetHandle: "in" },
   e12: { id: "e12", source: "ln_post", sourceHandle: "out", target: "output_1", targetHandle: "in" },
 };

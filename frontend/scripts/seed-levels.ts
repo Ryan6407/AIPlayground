@@ -580,26 +580,29 @@ const BERT_PAPER_GRAPH: GraphSchema = {
 // Paper: Improving Language Understanding by Generative Pre-Training (GPT)
 // ---------------------------------------------------------------------------
 
-// Staggered layout: blocks alternate between upper (y=160) and lower (y=320) rows; output at top (y=80).
-const GPT_DX = 260;
-const GPT_Y_UP = 160;
-const GPT_Y_DOWN = 320;
+// Staggered layout: 440px horizontal; ln_mid (7th block) on lower row so wires are clear.
+const GPT_DX = 440;
+const GPT_Y_UP = 100;
+const GPT_Y_DOWN = 380;
+const GPT_Y_POS_EMBED = -100; // positional embedding above the others
+const GPT_Y_LN_MID = 700; // 7th block (ln_mid) well below add_2 so wire connects up to bottom of Add
+const GPT_Y_OUTPUT = 60;
 const GPT_PAPER_GRAPH: GraphSchema = {
   version: "1.0",
   nodes: [
     { id: "text_input_1", type: "text_input", params: { batch_size: 1, seq_len: 128 }, position: { x: 80, y: GPT_Y_DOWN } },
     { id: "text_embed_1", type: "text_embedding", params: { vocab_size: 50257, embedding_dim: 128 }, position: { x: 80 + GPT_DX, y: GPT_Y_UP } },
-    { id: "pos_embed_1", type: "positional_embedding", params: { d_model: 128, max_len: 1024 }, position: { x: 80 + GPT_DX * 2, y: GPT_Y_DOWN } },
+    { id: "pos_embed_1", type: "positional_embedding", params: { d_model: 128, max_len: 1024 }, position: { x: 80 + GPT_DX * 2, y: GPT_Y_POS_EMBED } },
     { id: "ln_pre", type: "layernorm", params: { normalized_shape: 128 }, position: { x: 80 + GPT_DX * 3, y: GPT_Y_UP } },
     { id: "attn", type: "attention", params: { embed_dim: 128, num_heads: 4 }, position: { x: 80 + GPT_DX * 4, y: GPT_Y_DOWN } },
     { id: "add_1", type: "add", params: {}, position: { x: 80 + GPT_DX * 5, y: GPT_Y_UP } },
-    { id: "ln_mid", type: "layernorm", params: { normalized_shape: 128 }, position: { x: 80 + GPT_DX * 6, y: GPT_Y_DOWN } },
+    { id: "ln_mid", type: "layernorm", params: { normalized_shape: 128 }, position: { x: 80 + GPT_DX * 6, y: GPT_Y_LN_MID } },
     { id: "linear_1", type: "linear", params: { in_features: 128, out_features: 512 }, position: { x: 80 + GPT_DX * 7, y: GPT_Y_UP } },
     { id: "gelu_1", type: "activation", params: { activation: "gelu" }, position: { x: 80 + GPT_DX * 8, y: GPT_Y_DOWN } },
     { id: "linear_2", type: "linear", params: { in_features: 512, out_features: 128 }, position: { x: 80 + GPT_DX * 9, y: GPT_Y_UP } },
     { id: "add_2", type: "add", params: {}, position: { x: 80 + GPT_DX * 10, y: GPT_Y_DOWN } },
     { id: "ln_post", type: "layernorm", params: { normalized_shape: 128 }, position: { x: 80 + GPT_DX * 11, y: GPT_Y_UP } },
-    { id: "output_1", type: "output", params: {}, position: { x: 80 + GPT_DX * 12, y: 80 } },
+    { id: "output_1", type: "output", params: {}, position: { x: 80 + GPT_DX * 12, y: GPT_Y_OUTPUT } },
   ],
   edges: [
     { id: "e0a", source: "text_input_1", sourceHandle: "out", target: "text_embed_1", targetHandle: "in" },
@@ -610,10 +613,10 @@ const GPT_PAPER_GRAPH: GraphSchema = {
     { id: "e4", source: "attn", sourceHandle: "out", target: "add_1", targetHandle: "in_b" },
     { id: "e5", source: "add_1", sourceHandle: "out", target: "ln_mid", targetHandle: "in" },
     { id: "e6", source: "ln_mid", sourceHandle: "out", target: "linear_1", targetHandle: "in" },
-    { id: "e7", source: "ln_mid", sourceHandle: "out", target: "add_2", targetHandle: "in_a" },
+    { id: "e7", source: "ln_mid", sourceHandle: "out", target: "add_2", targetHandle: "in_b" },
     { id: "e8", source: "linear_1", sourceHandle: "out", target: "gelu_1", targetHandle: "in" },
     { id: "e9", source: "gelu_1", sourceHandle: "out", target: "linear_2", targetHandle: "in" },
-    { id: "e10", source: "linear_2", sourceHandle: "out", target: "add_2", targetHandle: "in_b" },
+    { id: "e10", source: "linear_2", sourceHandle: "out", target: "add_2", targetHandle: "in_a" },
     { id: "e11", source: "add_2", sourceHandle: "out", target: "ln_post", targetHandle: "in" },
     { id: "e12", source: "ln_post", sourceHandle: "out", target: "output_1", targetHandle: "in" },
   ],
