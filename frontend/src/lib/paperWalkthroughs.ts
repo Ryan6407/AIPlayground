@@ -996,7 +996,7 @@ const INCEPTION_BLOCK_ORDER = [
 ] as const;
 
 function inceptionGraphUpToBlock(index: number) {
-  const nodeIds = new Set(INCEPTION_BLOCK_ORDER.slice(0, index + 1));
+  const nodeIds: Set<string> = new Set(INCEPTION_BLOCK_ORDER.slice(0, index + 1));
   const nodes = INCEPTION_BLOCK_ORDER.slice(0, index + 1).map((id) => INCEPTION_NODES[id as keyof typeof INCEPTION_NODES]);
   const edges = INCEPTION_EDGES.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
   return { nodes, edges };
@@ -1150,7 +1150,7 @@ const T5_BLOCK_ORDER = [
 ] as const;
 
 function t5GraphUpToBlock(index: number) {
-  const nodeIds = new Set(T5_BLOCK_ORDER.slice(0, index + 1));
+  const nodeIds: Set<string> = new Set(T5_BLOCK_ORDER.slice(0, index + 1));
   const nodes = T5_BLOCK_ORDER.slice(0, index + 1).map((id) => T5_NODES[id as keyof typeof T5_NODES]);
   const edges = T5_EDGES.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
   return { nodes, edges };
