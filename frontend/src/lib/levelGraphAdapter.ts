@@ -41,6 +41,7 @@ function toNeuralCanvasType(type: string): string {
   const lower = type.toLowerCase();
   const map: Record<string, string> = {
     input: "Input",
+    board: "Board",
     text_input: "TextInput",
     textinput: "TextInput",
     output: "Output",
@@ -70,14 +71,45 @@ function toNeuralCanvasType(type: string): string {
   return map[lower] ?? type.charAt(0).toUpperCase() + type.slice(1);
 }
 
+/** Horizontal spacing when applying sequential layout so blocks never stack. */
+const SEQUENTIAL_LAYOUT_SPACING = 300;
+const SEQUENTIAL_LAYOUT_START = { x: 60, y: 200 };
+
+/**
+ * Returns true if nodes have no positions, all same position, or schema used (0,0) for all.
+ */
+function needsSequentialLayout(nodes: { position?: { x?: number; y?: number } }[]): boolean {
+  if (nodes.length === 0) return false;
+  const first = nodes[0].position ?? { x: 0, y: 0 };
+  const allSame = nodes.every((n) => {
+    const p = n.position ?? { x: 0, y: 0 };
+    return p.x === first.x && p.y === first.y;
+  });
+  if (allSame && nodes.length > 1) return true;
+  const allOrigin = nodes.every((n) => {
+    const p = n.position ?? { x: 0, y: 0 };
+    return p.x === 0 && p.y === 0;
+  });
+  return allOrigin;
+}
+
+export interface LevelGraphToNeuralCanvasOptions {
+  /** When true, always lay out nodes in a horizontal row (no stacking). Use for paper walkthrough steps so each new block is clearly visible and connectors show. */
+  forceSequentialLayout?: boolean;
+}
+
 /**
  * Convert a level's graph_json (GraphSchema) into NeuralCanvas nodes and edges.
+ * If nodes would stack (missing/duplicate positions), or forceSequentialLayout is set, applies a sequential horizontal layout.
  */
-export function levelGraphToNeuralCanvas(schema: GraphSchema): {
+export function levelGraphToNeuralCanvas(
+  schema: GraphSchema,
+  options?: LevelGraphToNeuralCanvasOptions
+): {
   nodes: Node[];
   edges: Edge[];
 } {
-  const nodes: Node[] = schema.nodes.map((n) => ({
+  const rawNodes = schema.nodes.map((n) => ({
     id: n.id,
     type: toNeuralCanvasType(n.type),
     position: n.position ?? { x: 0, y: 0 },
@@ -85,6 +117,18 @@ export function levelGraphToNeuralCanvas(schema: GraphSchema): {
       params: (n.params ?? {}) as Record<string, number | string>,
     },
   }));
+
+  const useSequential =
+    options?.forceSequentialLayout === true || needsSequentialLayout(rawNodes);
+  const nodes: Node[] = useSequential
+    ? rawNodes.map((node, i) => ({
+        ...node,
+        position: {
+          x: SEQUENTIAL_LAYOUT_START.x + i * SEQUENTIAL_LAYOUT_SPACING,
+          y: SEQUENTIAL_LAYOUT_START.y,
+        },
+      }))
+    : rawNodes;
 
   const edges: Edge[] = (schema.edges ?? []).map((e) => ({
     id: e.id ?? `e-${e.source}-${e.target}`,

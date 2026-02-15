@@ -20,6 +20,7 @@ import {
   type GraphSchema,
   type TrainingConfigSchema,
 } from "@/neuralcanvas/lib/trainingApi";
+import { usePrediction } from "@/neuralcanvas/components/canvas/PredictionContext";
 import type { TrainingStatus, EpochMetric, BatchUpdate } from "./types";
 import { LiveTrainingOverlay } from "./LiveTrainingOverlay";
 import { Play, Square, X, AlertTriangle, Database, Settings2, Zap } from "lucide-react";
@@ -50,6 +51,7 @@ const SETTING_HINTS: Record<string, string> = {
 };
 
 export function TrainingPanel({ open: isOpen, onClose, nodes, edges, compact }: TrainingPanelProps) {
+  const { setPredictedClassIndex } = usePrediction();
   const [config, setConfig] = useState<TrainingConfigSchema>(DEFAULT_CONFIG);
   const [status, setStatus] = useState<TrainingStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -106,9 +108,13 @@ export function TrainingPanel({ open: isOpen, onClose, nodes, edges, compact }: 
           }
           if (type === "batch") {
             setLatestBatch({ epoch: msg.epoch as number, batch: msg.batch as number, loss: msg.loss as number });
+            const predClass = msg.predicted_class as number | undefined;
+            if (typeof predClass === "number" && predClass >= 0) setPredictedClassIndex(predClass);
           }
           if (type === "epoch") {
             setLatestBatch(null);
+            const predClass = msg.sample_predicted_class as number | undefined;
+            if (typeof predClass === "number" && predClass >= 0) setPredictedClassIndex(predClass);
             setMetrics((m) => [
               ...m,
               {
