@@ -43,6 +43,12 @@ SINK_TYPES_LOWER = frozenset({"output", "display"})
 LAYOUT_DX = 420
 LAYOUT_DY_ROW = 100
 
+# Reasoning models (gpt-5, etc.) consume tokens for internal thinking before output.
+# Use higher limit so both reasoning and response fit. Override with OPENAI_MAX_COMPLETION_TOKENS.
+REASONING_MODEL_PREFIXES = ("gpt-5-mini")
+DEFAULT_MAX_TOKENS_REASONING = 5596
+DEFAULT_MAX_TOKENS_STANDARD = 2000
+
 BLOCKS_AND_SHAPES_REFERENCE = """
 **Block types and tensor shapes (use these exactly):**
 
@@ -414,13 +420,51 @@ Current design (full JSON graph):
         api_messages = [{"role": "system", "content": system_content}]
         api_messages.extend([{"role": m["role"], "content": m["content"]} for m in messages])
 
-        response = await client.chat.completions.create(
-            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-            messages=api_messages,
-            max_tokens=2000,
+        model = os.getenv("OPENAI_MODEL", "gpt-5")
+        is_reasoning = any(model.lower().startswith(p) for p in REASONING_MODEL_PREFIXES)
+        max_tokens = int(os.getenv("OPENAI_MAX_COMPLETION_TOKENS", "0")) or (
+            DEFAULT_MAX_TOKENS_REASONING if is_reasoning else DEFAULT_MAX_TOKENS_STANDARD
         )
-        text = (response.choices[0].message.content or "").strip()
+        # Cap reasoning so we get actual output. "low" uses fewer reasoning tokens than "medium"/"high".
+        # Set OPENAI_REASONING_EFFORT to "medium" or "high" for deeper reasoning (more tokens).
+        reasoning_effort = os.getenv("OPENAI_REASONING_EFFORT", "low").strip().lower()
+        if reasoning_effort not in ("none", "minimal", "low", "medium", "high", "xhigh"):
+            reasoning_effort = "low"
+
+        create_kwargs: dict = {
+            "model": model,
+            "messages": api_messages,
+            "max_completion_tokens": max_tokens,
+        }
+        if is_reasoning:
+            create_kwargs["reasoning_effort"] = reasoning_effort
+
+        response = await client.chat.completions.create(**create_kwargs)
+
+        choice = response.choices[0]
+        text = (choice.message.content or "").strip()
+        finish_reason = getattr(choice, "finish_reason", None) or ""
+
         if not text:
+            # Transparent feedback when reasoning model used all tokens for thinking
+            if finish_reason == "length" and is_reasoning:
+                usage = getattr(response, "usage", None)
+                reasoning = 0
+                total_output = 0
+                if usage:
+                    total_output = getattr(usage, "completion_tokens", 0) or 0
+                    details = getattr(usage, "completion_tokens_details", None) or getattr(
+                        usage, "output_tokens_details", None
+                    )
+                    if details:
+                        reasoning = getattr(details, "reasoning_tokens", 0) or 0
+                suggested_min = max(max_tokens + 500, reasoning + 1500)
+                return (
+                    f"[GPT-5 Notice] Model used all {total_output} tokens for internal reasoning "
+                    f"(~{reasoning} reasoning tokens). No response was produced. "
+                    f"Suggested minimum: {suggested_min}. Set OPENAI_MAX_COMPLETION_TOKENS in .env to increase.",
+                    None,
+                )
             return "No feedback generated.", None
 
         suggested = _extract_json_from_response(text)
