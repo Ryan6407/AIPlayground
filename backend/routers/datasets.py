@@ -40,7 +40,6 @@ async def list_datasets(request: Request):
         for dataset_id, info in BUILTIN_DATASETS.items()
     ]
 
-<<<<<<< Updated upstream
     custom = []
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer ") and settings.supabase_url and settings.supabase_service_role_key:
